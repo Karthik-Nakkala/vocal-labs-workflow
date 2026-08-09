@@ -1,16 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-primary: #0b0f19;
-  --bg-surface: #111827;
-  --bg-card: rgba(17, 24, 39, 0.7);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-highlight: rgba(99, 102, 241, 0.4);
-  --accent-primary: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
+  --bg-primary: #0f0a0b;
+  --bg-surface: #1a1012;
+  --bg-card: rgba(26, 16, 18, 0.75);
+  --border-color: rgba(226, 55, 68, 0.15);
+  --border-highlight: rgba(226, 55, 68, 0.5);
+  --accent-primary: #e23744;
+  --accent-hover: #cb202d;
+  --accent-gradient: linear-gradient(135deg, #e23744 0%, #ff5252 100%);
+  --text-main: #fff5f5;
+  --text-muted: #a89a9c;
   --status-pending: #94a3b8;
   --status-running: #38bdf8;
   --status-completed: #22c55e;
@@ -55,19 +55,19 @@ h1, h2, h3, h4, h5 {
 /* Inputs & Buttons */
 .input-field {
   width: 100%;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(20, 10, 12, 0.7);
+  border: 1px solid rgba(226, 55, 68, 0.2);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   color: #fff;
   font-size: 0.95rem;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .input-field:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 2px rgba(226, 55, 68, 0.25);
 }
 
 .btn-primary {
