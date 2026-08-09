@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { gqlRequest, callFunction, NHOST_FUNCTIONS_URL } from "../lib/nhost";
+import { gqlRequest, callFunction, gqlSubscribe, NHOST_FUNCTIONS_URL } from "../lib/nhost";
 
 const STATUS_LABELS = {
   pending: "Pending",
@@ -137,8 +137,6 @@ function WebhookPanel({ workflowId }) {
   );
 }
 
-
-
 export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
   const [runId, setRunId] = useState(null);
   const [runData, setRunData] = useState(null);
@@ -157,16 +155,56 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
   const userRole = currentOrg?.membershipRole || "viewer";
   const canRun = ["owner", "editor"].includes(userRole);
 
-  // ── Polling: fetch run status every 1.5s while active ────────────────────────
+  // ── Real-Time GraphQL Subscription on step_runs ─────────────────────────────
   useEffect(() => {
     if (!runId) return;
     fetchRunDetails();
 
+    const subQuery = `
+      subscription OnStepRunsChanged($runId: uuid!) {
+        workflow_runs_by_pk(id: $runId) {
+          id
+          status
+          input
+          output
+          workflow_run_steps(order_by: { workflow_step: { step_order: asc } }) {
+            id
+            status
+            input
+            output
+            workflow_step {
+              name
+              type
+              step_order
+            }
+          }
+        }
+      }
+    `;
+
+    // Connect real GraphQL WebSocket Subscription to Hasura Engine
+    const unsub = gqlSubscribe(
+      subQuery,
+      { runId },
+      (data) => {
+        if (data?.workflow_runs_by_pk) {
+          setRunData(data.workflow_runs_by_pk);
+        }
+      },
+      (subErr) => {
+        console.warn("[runner] Subscription WebSocket note (using polling fallback):", subErr?.message);
+      }
+    );
+
+    // Backup polling loop in case WebSocket connection is blocked by browser policy
     pollRef.current = setInterval(() => {
       fetchRunDetails();
     }, 1500);
 
-    return () => clearInterval(pollRef.current);
+    return () => {
+      unsub();
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [runId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Stop polling once run reaches a terminal non-approval state
