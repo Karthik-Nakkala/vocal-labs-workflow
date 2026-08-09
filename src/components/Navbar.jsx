@@ -66,8 +66,8 @@ export default function Navbar({ user, organizations, currentOrg, onSelectOrg, o
               style={{
                 padding: "0.4rem 0.8rem",
                 fontSize: "0.85rem",
-                borderColor: "rgba(99, 102, 241, 0.4)",
-                color: "#a5b4fc",
+                borderColor: "rgba(226, 55, 68, 0.4)",
+                color: "#ff8a95",
               }}
             >
               👥 Members
@@ -82,9 +82,9 @@ export default function Navbar({ user, organizations, currentOrg, onSelectOrg, o
           fontSize: "0.75rem",
           padding: "0.35rem 0.75rem",
           borderRadius: "8px",
-          background: "rgba(59, 130, 246, 0.15)",
-          border: "1px solid rgba(59, 130, 246, 0.3)",
-          color: "#93c5fd",
+          background: "rgba(226, 55, 68, 0.12)",
+          border: "1px solid rgba(226, 55, 68, 0.3)",
+          color: "#ff8a95",
           display: "flex",
           alignItems: "center",
           gap: "0.4rem"

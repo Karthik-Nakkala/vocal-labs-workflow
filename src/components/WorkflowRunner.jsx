@@ -46,7 +46,7 @@ function WebhookPanel({ workflowId }) {
       style={{
         padding: "1.5rem",
         marginBottom: "1.5rem",
-        borderLeft: "4px solid rgba(99,102,241,0.6)",
+        borderLeft: "4px solid rgba(226,55,68,0.7)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -90,7 +90,7 @@ function WebhookPanel({ workflowId }) {
             borderRadius: "6px",
             marginTop: "0.3rem",
             wordBreak: "break-all",
-            color: "#a5b4fc",
+            color: "#ff8a95",
           }}
         >
           POST {webhookUrl}
@@ -586,9 +586,9 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
                   fontSize: "0.75rem",
                   padding: "0.2rem 0.6rem",
                   borderRadius: "99px",
-                  background: userRole === "viewer" ? "rgba(239,68,68,0.15)" : "rgba(99,102,241,0.15)",
-                  border: userRole === "viewer" ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(99,102,241,0.3)",
-                  color: userRole === "viewer" ? "#fca5a5" : "#a5b4fc",
+                  background: userRole === "viewer" ? "rgba(239,68,68,0.15)" : "rgba(226,55,68,0.15)",
+                  border: userRole === "viewer" ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(226,55,68,0.3)",
+                  color: userRole === "viewer" ? "#fca5a5" : "#ff8a95",
                 }}
               >
                 {userRole}

@@ -6,13 +6,13 @@ const ROLE_OPTIONS = [
     value: "owner",
     label: "Owner",
     desc: "Full control — manage members, create/edit/delete workflows, trigger runs",
-    color: "#a855f7",
+    color: "#e23744",
   },
   {
     value: "editor",
     label: "Editor",
     desc: "Create and edit workflows, trigger runs — cannot manage members",
-    color: "#6366f1",
+    color: "#ff5252",
   },
   {
     value: "viewer",
