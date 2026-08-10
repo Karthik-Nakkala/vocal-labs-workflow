@@ -1,8 +1,9 @@
 import { getAdminClient } from "./nhostAdmin.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // ─── Real Gemini LLM Call (with 1 retry on 429 / 5xx) ───────────────────────
 async function callGemini(prompt, attempt = 1) {
@@ -13,7 +14,7 @@ async function callGemini(prompt, attempt = 1) {
     await new Promise((r) => setTimeout(r, 800));
     return {
       text: `[STUB] AI analysis complete for: "${prompt.slice(0, 80)}". Sentiment: positive. Priority: high.`,
-      model: "gemini-1.5-flash-stub",
+      model: `${GEMINI_MODEL}-stub`,
       stubbed: true,
     };
   }
@@ -30,9 +31,12 @@ async function callGemini(prompt, attempt = 1) {
     },
   };
 
-  const res = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+  const res = await fetch(GEMINI_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": GEMINI_API_KEY,
+    },
     body: JSON.stringify(body),
   });
 
@@ -56,7 +60,7 @@ async function callGemini(prompt, attempt = 1) {
 
   return {
     text,
-    model: json?.modelVersion || "gemini-1.5-flash",
+    model: json?.modelVersion || GEMINI_MODEL,
     finishReason: json?.candidates?.[0]?.finishReason || "STOP",
     stubbed: false,
   };
