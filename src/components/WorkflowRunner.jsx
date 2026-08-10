@@ -162,22 +162,16 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
 
     const subQuery = `
       subscription OnStepRunsChanged($runId: uuid!) {
-        workflow_runs_by_pk(id: $runId) {
+        workflow_run_steps(
+          where: { run_id: { _eq: $runId } }
+          order_by: { workflow_step: { step_order: asc } }
+        ) {
           id
           status
           input
           output
-          workflow_run_steps(order_by: { workflow_step: { step_order: asc } }) {
-            id
-            status
-            input
-            output
-            workflow_step {
-              name
-              type
-              step_order
-            }
-          }
+          workflow_step { name type step_order }
+          workflow_run { id status input output }
         }
       }
     `;
@@ -187,23 +181,19 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
       subQuery,
       { runId },
       (data) => {
-        if (data?.workflow_runs_by_pk) {
-          setRunData(data.workflow_runs_by_pk);
+        const stepRuns = data?.workflow_run_steps || [];
+        const run = stepRuns[0]?.workflow_run;
+        if (run) {
+          setRunData({ ...run, workflow_run_steps: stepRuns });
         }
       },
       (subErr) => {
-        console.warn("[runner] Subscription WebSocket note (using polling fallback):", subErr?.message);
+        console.warn("[runner] Subscription WebSocket error:", subErr?.message);
       }
     );
 
-    // Backup polling loop in case WebSocket connection is blocked by browser policy
-    pollRef.current = setInterval(() => {
-      fetchRunDetails();
-    }, 1500);
-
     return () => {
       unsub();
-      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [runId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -220,7 +210,7 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
       pollRef.current = null;
     } else if (runData?.status === "running" && !pollRef.current) {
       // Run resumed (e.g. after approval) — restart polling
-      pollRef.current = setInterval(fetchRunDetails, 1500);
+      pollRef.current = null;
     }
   }, [runData?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -261,6 +251,8 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
       }
     } catch (err) {
       console.error("[runner] Trigger error:", err);
+      setError(err.message || "Failed to trigger workflow run.");
+      return;
 
       // Graceful fallback: if function endpoint not reachable (dev mode),
       // create run directly via GraphQL and simulate
@@ -498,10 +490,12 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
       // Resume polling to show updated state — clear first to avoid double interval
       clearInterval(pollRef.current);
       pollRef.current = null;
-      pollRef.current = setInterval(fetchRunDetails, 1500);
+      // The GraphQL subscription continues to deliver the resumed run updates.
       await fetchRunDetails();
     } catch (fnErr) {
       console.warn("[runner] approveWorkflowStep action error:", fnErr.message);
+      setError(fnErr.message || "Approval action failed.");
+      return;
 
       // Fallback: direct DB mutation (still checks role client-side above)
       try {

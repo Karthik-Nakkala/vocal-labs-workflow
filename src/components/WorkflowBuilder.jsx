@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { gqlRequest } from "../lib/nhost";
+import { callFunction } from "../lib/nhost";
 import { devStore } from "../lib/devStore";
 
 const STEP_TYPES = [
@@ -13,6 +13,7 @@ const STEP_TYPES = [
 
 export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, onSaveSuccess }) {
   const isViewer = currentOrg?.membershipRole === "viewer";
+  const isOwner = currentOrg?.membershipRole === "owner";
   const [name, setName] = useState(workflowToEdit?.name || "Customer Complaint AI Workflow");
   const [steps, setSteps] = useState(
     workflowToEdit?.workflow_steps || [
@@ -45,62 +46,25 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
   };
 
   const handleSaveWorkflow = async () => {
+    if (isViewer) {
+      setError("Forbidden: Viewers cannot create or edit workflows.");
+      return;
+    }
+    if (!currentOrg?.id) {
+      setError("Select an organization before creating a workflow.");
+      return;
+    }
     if (!name.trim()) return;
     setSaving(true);
     setError(null);
 
     try {
-      let workflowId = workflowToEdit?.id;
-
-      if (!workflowId) {
-        const wfRes = await gqlRequest(`
-          mutation CreateWf($org_id: uuid!, $name: String!) {
-            insert_workflows_one(object: { org_id: $org_id, name: $name }) {
-              id
-            }
-          }
-        `, { org_id: currentOrg.id, name });
-        workflowId = wfRes.insert_workflows_one.id;
-      } else {
-        await gqlRequest(`
-          mutation UpdateWf($id: uuid!, $name: String!) {
-            update_workflows_by_pk(pk_columns: { id: $id }, _set: { name: $name }) {
-              id
-            }
-          }
-        `, { id: workflowId, name });
-
-        await gqlRequest(`
-          mutation DeleteOldSteps($workflow_id: uuid!) {
-            delete_workflow_steps(where: { workflow_id: { _eq: $workflow_id } }) {
-              affected_rows
-            }
-          }
-        `, { workflow_id: workflowId });
-      }
-
-      for (let i = 0; i < steps.length; i++) {
-        const s = steps[i];
-        await gqlRequest(`
-          mutation InsertStep($workflow_id: uuid!, $name: String!, $type: String!, $config: jsonb, $step_order: Int!) {
-            insert_workflow_steps_one(object: {
-              workflow_id: $workflow_id,
-              name: $name,
-              type: $type,
-              config: $config,
-              step_order: $step_order
-            }) {
-              id
-            }
-          }
-        `, {
-          workflow_id: workflowId,
-          name: s.name,
-          type: s.type,
-          config: s.config || {},
-          step_order: i + 1
-        });
-      }
+      await callFunction("/save-workflow", {
+        org_id: currentOrg.id,
+        workflow_id: workflowToEdit?.id || null,
+        name,
+        steps,
+      });
 
       onSaveSuccess();
     } catch (err) {
@@ -203,7 +167,7 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
         <div className="glass-card" style={{ padding: "1.5rem" }}>
           <h4 style={{ fontSize: "1rem", marginBottom: "1rem" }}>+ Add Next Step</h4>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "0.75rem" }}>
-            {STEP_TYPES.map((st) => (
+        {STEP_TYPES.filter((st) => isOwner || !["db_write", "notify"].includes(st.type)).map((st) => (
               <button
                 key={st.type}
                 type="button"
