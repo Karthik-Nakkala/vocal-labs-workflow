@@ -1,22 +1,31 @@
-import { getAdminClient } from "./nhostAdmin.js";
+import { getAdminClient, getAuthenticatedUserId } from "./nhostAdmin.js";
 
 export default async function handler(req, res) {
-  // Allow CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers?.origin;
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://vocal-labs-workflow.vercel.app").split(",").map((value) => value.trim());
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
 
   try {
-    const { input, session_variables } = req.body || {};
-    const userId = session_variables ? session_variables["x-hasura-user-id"] : null;
+    const requestBody = req.body || {};
+    const actionInput = requestBody.session_variables ? requestBody.input || {} : requestBody;
+    const userId = requestBody.session_variables?.["x-hasura-user-id"] || await getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized: Missing user session" });
     }
 
-    const { name } = input || {};
+    const { name } = actionInput;
     if (!name || name.trim() === "") {
       return res.status(400).json({ message: "Organization name is required" });
     }
