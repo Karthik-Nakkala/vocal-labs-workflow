@@ -85,12 +85,13 @@ export default async function handler(req, res) {
     // ── Create workflow_run record ─────────────────────────────────────────────
     const insertRunRes = await nhostAdmin.graphql.request({
       query: `
-        mutation CreateRun($workflow_id: uuid!, $user_id: uuid!, $input: jsonb) {
+        mutation CreateRun($workflow_id: uuid!, $user_id: uuid!, $input: jsonb, $output: jsonb!) {
           insert_workflow_runs_one(object: {
             workflow_id: $workflow_id,
             user_id: $user_id,
             status: "pending",
-            input: $input
+            input: $input,
+            output: $output
           }) {
             id
             status
@@ -101,6 +102,7 @@ export default async function handler(req, res) {
         workflow_id,
         user_id: userId,
         input: runInput || { triggeredAt: new Date().toISOString(), triggeredBy: userId },
+        output: {},
       },
     });
 

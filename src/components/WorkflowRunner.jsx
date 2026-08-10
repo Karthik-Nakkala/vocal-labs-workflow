@@ -282,12 +282,13 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
 
       const createRunRes = await gqlRequest(
         `
-        mutation CreateRunFallback($workflow_id: uuid!, $user_id: uuid!, $input: jsonb) {
+        mutation CreateRunFallback($workflow_id: uuid!, $user_id: uuid!, $input: jsonb, $output: jsonb!) {
           insert_workflow_runs_one(object: {
             workflow_id: $workflow_id,
             user_id: $user_id,
             status: "running",
-            input: $input
+            input: $input,
+            output: $output
           }) { id status }
         }
       `,
@@ -295,6 +296,7 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
           workflow_id: workflow.id,
           user_id: userId.includes("-") ? userId : "00000000-0000-0000-0000-000000000000",
           input: parsedInput,
+          output: {},
         }
       );
 

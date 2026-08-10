@@ -123,12 +123,13 @@ export default async function handler(req, res) {
 
     const insertRunRes = await nhostAdmin.graphql.request({
       query: `
-        mutation CreateWebhookRun($workflow_id: uuid!, $user_id: uuid!, $input: jsonb) {
+        mutation CreateWebhookRun($workflow_id: uuid!, $user_id: uuid!, $input: jsonb, $output: jsonb!) {
           insert_workflow_runs_one(object: {
             workflow_id: $workflow_id,
             user_id: $user_id,
             status: "pending",
-            input: $input
+            input: $input,
+            output: $output
           }) {
             id
             status
@@ -139,6 +140,7 @@ export default async function handler(req, res) {
         workflow_id: workflowId,
         user_id: SYSTEM_USER_ID,
         input: runInput,
+        output: {},
       },
     });
 

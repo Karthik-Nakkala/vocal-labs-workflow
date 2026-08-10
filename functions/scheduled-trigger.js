@@ -113,12 +113,13 @@ export default async function handler(req, res) {
       try {
         const insertRunRes = await nhostAdmin.graphql.request({
           query: `
-            mutation CreateScheduledRun($workflow_id: uuid!, $user_id: uuid!, $input: jsonb) {
+            mutation CreateScheduledRun($workflow_id: uuid!, $user_id: uuid!, $input: jsonb, $output: jsonb!) {
               insert_workflow_runs_one(object: {
                 workflow_id: $workflow_id,
                 user_id: $user_id,
                 status: "pending",
-                input: $input
+                input: $input,
+                output: $output
               }) {
                 id
                 status
@@ -133,6 +134,7 @@ export default async function handler(req, res) {
               triggeredAt: new Date().toISOString(),
               workflowName: wf.name,
             },
+            output: {},
           },
         });
 
