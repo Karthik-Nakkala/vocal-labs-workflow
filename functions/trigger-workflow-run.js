@@ -116,15 +116,16 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "Failed to create workflow run record" });
     }
 
-    // Keep the serverless invocation alive until the engine reaches a terminal
-    // state or an approval gate. Fire-and-forget work is terminated by Nhost
-    // once this handler sends its response.
-    await runWorkflowEngine({ runId: run.id });
+    // Return the run id before execution finishes so the browser can subscribe
+    // to each server-side step update as it happens.
+    void runWorkflowEngine({ runId: run.id }).catch((engineError) => {
+      console.error(`[trigger] Async engine error for run ${run.id}:`, engineError.message);
+    });
 
-    return res.status(200).json({
+    return res.status(202).json({
       run_id: run.id,
       status: "pending",
-      message: "Workflow run initiated. Poll step_runs for live progress.",
+      message: "Workflow run initiated. Subscribe to step progress for live updates.",
     });
   } catch (error) {
     console.error("[trigger] Unhandled error:", error);

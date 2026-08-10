@@ -143,6 +143,8 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
   const [triggering, setTriggering] = useState(false);
   const [approvalLoading, setApprovalLoading] = useState(null); // stepRunId being approved
   const [error, setError] = useState(null);
+  const [subscriptionState, setSubscriptionState] = useState("idle");
+  const [lastLiveUpdate, setLastLiveUpdate] = useState(null);
   const [inputPayload, setInputPayload] = useState(
     JSON.stringify(
       { complaint: "API delay error in production system", customerId: "CUST-9821" },
@@ -158,20 +160,23 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
   // ── Real-Time GraphQL Subscription on step_runs ─────────────────────────────
   useEffect(() => {
     if (!runId) return;
+    setSubscriptionState("connecting");
     fetchRunDetails();
 
     const subQuery = `
-      subscription OnStepRunsChanged($runId: uuid!) {
-        workflow_run_steps(
-          where: { run_id: { _eq: $runId } }
-          order_by: { workflow_step: { step_order: asc } }
-        ) {
+      subscription OnRunProgress($runId: uuid!) {
+        workflow_runs_by_pk(id: $runId) {
           id
           status
           input
           output
-          workflow_step { name type step_order }
-          workflow_run { id status input output }
+          workflow_run_steps(order_by: { workflow_step: { step_order: asc } }) {
+            id
+            status
+            input
+            output
+            workflow_step { name type step_order }
+          }
         }
       }
     `;
@@ -181,14 +186,16 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
       subQuery,
       { runId },
       (data) => {
-        const stepRuns = data?.workflow_run_steps || [];
-        const run = stepRuns[0]?.workflow_run;
+        const run = data?.workflow_runs_by_pk;
         if (run) {
-          setRunData({ ...run, workflow_run_steps: stepRuns });
+          setRunData(run);
+          setSubscriptionState("connected");
+          setLastLiveUpdate(new Date());
         }
       },
       (subErr) => {
         console.warn("[runner] Subscription WebSocket error:", subErr?.message);
+        setSubscriptionState("error");
       }
     );
 
@@ -225,6 +232,8 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
     setError(null);
     setRunData(null);
     setRunId(null);
+    setSubscriptionState("idle");
+    setLastLiveUpdate(null);
 
     let parsedInput = {};
     try {
@@ -584,6 +593,8 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
     setRunId(null);
     setRunData(null);
     setError(null);
+    setSubscriptionState("idle");
+    setLastLiveUpdate(null);
   };
 
   const isRunActive =
@@ -722,7 +733,12 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
                       animation: "pulse-opacity 1.5s ease-in-out infinite",
                     }}
                   >
-                    ⟳ Live polling…
+                    {subscriptionState === "connected" ? "● Live stream connected" : "◌ Connecting to live stream…"}
+                  </span>
+                )}
+                {lastLiveUpdate && (
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                    Updated {lastLiveUpdate.toLocaleTimeString()}
                   </span>
                 )}
               </div>
