@@ -1,9 +1,21 @@
 import { getAdminClient } from "./nhostAdmin.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+// NOTE: Google frequently retires pinned Gemini model versions (e.g.
+// gemini-2.5-flash was pulled from generateContent ahead of its published
+// shutdown date — this is exactly what caused the 404 you were seeing).
+// To avoid this breaking again, default to Google's self-updating "-latest"
+// alias instead of a version-pinned name. You can still pin an exact
+// version via the GEMINI_MODEL env var if you need reproducibility — just
+// know pinned versions eventually get deprecated and you'll need to bump
+// them again later.
+const RAW_GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// Normalize in case someone sets GEMINI_MODEL="models/gemini-..." by mistake
+const GEMINI_MODEL = RAW_GEMINI_MODEL.replace(/^models\//, "");
+const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || "v1beta";
 const GEMINI_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models/${GEMINI_MODEL}:generateContent`;
 
 // ─── Real Gemini LLM Call (with 1 retry on 429 / 5xx) ───────────────────────
 async function callGemini(prompt, attempt = 1) {
@@ -49,6 +61,24 @@ async function callGemini(prompt, attempt = 1) {
 
   if (!res.ok) {
     const errText = await res.text();
+
+    // 404 on generateContent almost always means the model name is wrong,
+    // deprecated, or unavailable to this API key's project — not a bug in
+    // the request shape itself. Surface a clearer, actionable message.
+    if (res.status === 404) {
+      throw new Error(
+        `Gemini API error 404: model "${GEMINI_MODEL}" was not found or is no longer ` +
+        `supported for generateContent on API version ${GEMINI_API_VERSION}. Google ` +
+        `periodically retires pinned model versions (this is what happened to ` +
+        `gemini-2.5-flash). Fix: set GEMINI_MODEL in your environment to a currently ` +
+        `available model — e.g. "gemini-flash-latest" (self-updating alias, recommended) ` +
+        `or a current versioned model id from https://ai.google.dev/gemini-api/docs/models — ` +
+        `or GET https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models ` +
+        `with header x-goog-api-key to list models actually available to your key/project. ` +
+        `Raw response: ${errText}`
+      );
+    }
+
     throw new Error(`Gemini API error ${res.status}: ${errText}`);
   }
 
