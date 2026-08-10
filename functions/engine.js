@@ -1,10 +1,7 @@
 import { getAdminClient } from "./nhostAdmin.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// Gemini 3 Flash Preview is currently available for the Gemini API.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
-
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
@@ -30,6 +27,7 @@ async function callGemini(prompt, attempt = 1) {
     ],
     generationConfig: {
       maxOutputTokens: 512,
+      temperature: 0.4,
     },
   };
 
@@ -55,7 +53,6 @@ async function callGemini(prompt, attempt = 1) {
   }
 
   const json = await res.json();
-
   const text =
     json?.candidates?.[0]?.content?.parts?.[0]?.text ||
     json?.candidates?.[0]?.output ||
@@ -266,21 +263,15 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
         let parsed = {};
         try {
           // Extract JSON block from markdown code fence if present
-          const jsonMatch =
-            llmResult.text.match(/```(?:json)?\s*([\s\S]*?)```/) ||
+          const jsonMatch = llmResult.text.match(/```(?:json)?\s*([\s\S]*?)```/) ||
             llmResult.text.match(/(\{[\s\S]*\})/);
-
           const rawJson = jsonMatch ? jsonMatch[1] : llmResult.text;
           parsed = JSON.parse(rawJson.trim());
         } catch {
           // If not valid JSON, structure the raw text response
           parsed = {
-            sentiment: llmResult.text.toLowerCase().includes("negative")
-              ? "negative"
-              : "positive",
-            priority: llmResult.text.toLowerCase().includes("high")
-              ? "high"
-              : "medium",
+            sentiment: llmResult.text.toLowerCase().includes("negative") ? "negative" : "positive",
+            priority: llmResult.text.toLowerCase().includes("high") ? "high" : "medium",
             summary: llmResult.text.slice(0, 500),
           };
         }
@@ -295,19 +286,12 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
 
       // ── http_request ───────────────────────────────────────────────────────
       } else if (step.type === "http_request") {
-        const targetUrl =
-          step.config?.url || "https://jsonplaceholder.typicode.com/todos/1";
+        const targetUrl = step.config?.url || "https://jsonplaceholder.typicode.com/todos/1";
         const method = step.config?.method || "GET";
         const reqHeaders = step.config?.headers || {};
         const reqBody = step.config?.body || null;
 
-        const httpResult = await callHttpRequest(
-          targetUrl,
-          method,
-          reqHeaders,
-          reqBody
-        );
-
+        const httpResult = await callHttpRequest(targetUrl, method, reqHeaders, reqBody);
         stepOutput = {
           statusCode: httpResult.statusCode,
           ok: httpResult.ok,
@@ -325,13 +309,10 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
           ...currentOutputs,
         };
         const conditionMet = evaluateCondition(conditionExpr, evalContext);
-
         stepOutput = {
           conditionExpression: conditionExpr,
           conditionMet,
-          nextBranch: conditionMet
-            ? (step.config?.true_branch || "true_branch")
-            : (step.config?.false_branch || "false_branch"),
+          nextBranch: conditionMet ? (step.config?.true_branch || "true_branch") : (step.config?.false_branch || "false_branch"),
           evaluationContext: evalContext,
         };
 
@@ -356,7 +337,6 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
         // Disclosed: this is a logged notify stub — real channel integration
         // would require SLACK_WEBHOOK_URL or SENDGRID_API_KEY env vars.
         console.log(`[engine][notify] Channel: ${channel} | Message: ${message}`);
-
         stepOutput = {
           notified: true,
           channel,
@@ -369,7 +349,6 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
       } else if (step.type === "approval_gate") {
         stepStatus = "waiting_approval";
         pauseWorkflow = true;
-
         stepOutput = {
           message: "Approval required — run paused awaiting owner/editor decision",
           requiredRole: ["owner", "editor"],
@@ -386,13 +365,8 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
         };
       }
     } catch (execErr) {
-      console.error(
-        `[engine] Step "${step.name}" (${step.type}) failed:`,
-        execErr.message
-      );
-
+      console.error(`[engine] Step "${step.name}" (${step.type}) failed:`, execErr.message);
       stepStatus = "failed";
-
       stepOutput = {
         error: execErr.message,
         stepType: step.type,
@@ -415,7 +389,6 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
 
     // Accumulate outputs for next step context
     currentOutputs[step.name || step.id] = stepOutput;
-
     // Also spread top-level keys for easy conditional access
     if (typeof stepOutput === "object" && stepOutput !== null) {
       Object.assign(currentOutputs, stepOutput);
@@ -434,12 +407,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
         `,
         variables: { runId },
       });
-
-      return {
-        status: "failed",
-        failedStepId: step.id,
-        error: stepOutput.error,
-      };
+      return { status: "failed", failedStepId: step.id, error: stepOutput.error };
     }
 
     // ── Handle approval gate pause ───────────────────────────────────────────
@@ -455,12 +423,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
         `,
         variables: { runId },
       });
-
-      return {
-        status: "waiting_approval",
-        pausedAtStepId: step.id,
-        stepRunId,
-      };
+      return { status: "waiting_approval", pausedAtStepId: step.id, stepRunId };
     }
   }
 
@@ -497,4 +460,3 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
 
   return { status: "completed", outputs: currentOutputs };
 }
-````
