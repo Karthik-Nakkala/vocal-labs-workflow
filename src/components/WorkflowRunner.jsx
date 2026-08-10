@@ -27,7 +27,7 @@ function StatusBadge({ status }) {
 // ── Webhook URL Panel ─────────────────────────────────────────────────────────
 function WebhookPanel({ workflowId }) {
   const [copied, setCopied] = useState(false);
-  const webhookUrl = `${NHOST_FUNCTIONS_URL}/webhookTrigger`;
+  const webhookUrl = `${NHOST_FUNCTIONS_URL}/webhook-trigger`;
 
   const curlCommand = `curl -X POST "${webhookUrl}" \\
   -H "Content-Type: application/json" \\
@@ -249,7 +249,7 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
       //   2. Quota check
       //   3. Creates workflow_run record
       //   4. Fires engine.js async
-      const result = await callFunction("/triggerWorkflowRun", {
+      const result = await callFunction("/trigger-workflow-run", {
         workflow_id: workflow.id,
         input: parsedInput,
       });
@@ -488,7 +488,7 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
 
     try {
       // Prefer the serverless Action (does server-side role check + engine resume)
-      await callFunction("/approveWorkflowStep", {
+      await callFunction("/approve-workflow-step", {
         step_run_id: stepRunId,
         approved,
       });

@@ -141,7 +141,7 @@ export default function WorkflowList({ currentOrg, onSelectWorkflow, onCreateNew
                     fontFamily: "monospace",
                     marginBottom: "1rem"
                   }}>
-                    ⚡ Triggers: Manual, Webhook (`/api/triggerWorkflowRun`)
+                    ⚡ Triggers: Manual, Webhook (`/webhook-trigger`)
                   </div>
                 </div>
 
