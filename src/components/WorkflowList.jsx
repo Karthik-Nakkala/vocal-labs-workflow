@@ -38,7 +38,6 @@ export default function WorkflowList({ currentOrg, onSelectWorkflow, onCreateNew
               id
               status
               user_id
-              created_at
             }
           }
         }
