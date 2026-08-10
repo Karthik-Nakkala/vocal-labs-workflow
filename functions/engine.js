@@ -202,12 +202,13 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
     if (!stepRun) {
       const createRes = await nhostAdmin.graphql.request({
         query: `
-          mutation CreateStepRun($runId: uuid!, $stepId: uuid!, $input: jsonb) {
+          mutation CreateStepRun($runId: uuid!, $stepId: uuid!, $input: jsonb, $output: jsonb!) {
             insert_workflow_run_steps_one(object: {
               run_id: $runId,
               step_id: $stepId,
               status: "running",
-              input: $input
+              input: $input,
+              output: $output
             }) { id }
           }
         `,
@@ -215,6 +216,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
           runId,
           stepId: step.id,
           input: { runInput: run.input, previousOutputs: currentOutputs },
+          output: {},
         },
       });
       stepRunId = createRes.body.data?.insert_workflow_run_steps_one?.id;
