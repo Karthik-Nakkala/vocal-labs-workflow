@@ -1,20 +1,5 @@
-import { createClient } from "@nhost/nhost-js";
 import { runWorkflowEngine } from "./engine.js";
-
-const NHOST_SUBDOMAIN = process.env.NHOST_SUBDOMAIN || "mbknwfytawrylgsgbfxw";
-const NHOST_REGION = process.env.NHOST_REGION || "ap-south-1";
-const NHOST_GRAPHQL_URL =
-  process.env.NHOST_GRAPHQL_URL ||
-  `https://${NHOST_SUBDOMAIN}.hasura.${NHOST_REGION}.nhost.run/v1/graphql`;
-
-function getAdminClient() {
-  return createClient({
-    subdomain: NHOST_SUBDOMAIN,
-    region: NHOST_REGION,
-    adminSecret: process.env.NHOST_ADMIN_SECRET,
-    graphqlUrl: NHOST_GRAPHQL_URL,
-  });
-}
+import { getAdminClient } from "./nhostAdmin.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -71,7 +56,7 @@ export default async function handler(req, res) {
       variables: { step_run_id },
     });
 
-    const stepRun = stepRunDataRes.data?.workflow_run_steps_by_pk;
+    const stepRun = stepRunDataRes.body.data?.workflow_run_steps_by_pk;
     if (!stepRun) {
       return res.status(404).json({ message: "Step run record not found" });
     }
