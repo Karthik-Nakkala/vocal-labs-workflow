@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { gqlRequest } from "../lib/nhost";
-import { devStore } from "../lib/devStore";
+import { callFunction } from "../lib/nhost";
 
 export default function OrgManager({ onClose, onOrgCreated }) {
   const [orgName, setOrgName] = useState("");
@@ -14,43 +13,10 @@ export default function OrgManager({ onClose, onOrgCreated }) {
     setLoading(true);
     setError(null);
 
-    const savedUserStr = localStorage.getItem("nhost_user");
-    const savedUser = savedUserStr ? JSON.parse(savedUserStr) : null;
-    const userId = savedUser?.id || savedUser?.email || "00000000-0000-0000-0000-000000000001";
-
     try {
-      const createOrgRes = await gqlRequest(`
-        mutation CreateOrgTable($name: String!) {
-          insert_organizations_one(object: { name: $name }) {
-            id
-            name
-          }
-        }
-      `, { name: orgName.trim() });
-
-      const newOrg = createOrgRes?.insert_organizations_one;
+      const newOrg = await callFunction("/create-organization", { name: orgName.trim() });
       if (!newOrg) {
-        throw new Error("Failed to insert organization record into Hasura database.");
-      }
-
-      try {
-        await gqlRequest(`
-          mutation AddOwnerMember($org_id: uuid!, $user_id: uuid!) {
-            insert_organization_members_one(object: {
-              org_id: $org_id,
-              user_id: $user_id,
-              role: "owner"
-            }) {
-              id
-              role
-            }
-          }
-        `, {
-          org_id: newOrg.id,
-          user_id: userId.includes("-") ? userId : "00000000-0000-0000-0000-000000000001"
-        });
-      } catch (memberErr) {
-        console.warn("Member insert note:", memberErr.message);
+        throw new Error("Failed to create organization.");
       }
 
       onOrgCreated(newOrg);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { gqlRequest } from "../lib/nhost";
+import { callFunction } from "../lib/nhost";
 
 const ROLE_OPTIONS = [
   {
@@ -22,7 +22,7 @@ const ROLE_OPTIONS = [
   },
 ];
 
-export default function InviteMember({ currentOrg, userRole, onClose, onMembersUpdated }) {
+export default function InviteMember({ currentOrg, userRole, currentUser, onClose, onMembersUpdated }) {
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -43,43 +43,14 @@ export default function InviteMember({ currentOrg, userRole, onClose, onMembersU
   const fetchMembers = async () => {
     setLoadingMembers(true);
     try {
-      const data = await gqlRequest(
-        `
-        query GetOrgMembers($org_id: uuid!) {
-          organization_members(where: { org_id: { _eq: $org_id } }) {
-            id
-            role
-            user_id
-            user {
-              id
-              email
-              displayName
-            }
-          }
-        }
-      `,
-        { org_id: currentOrg.id }
-      );
-      setMembers(data?.organization_members || []);
+      const data = await callFunction("/manage-organization-members", {
+        action: "list",
+        org_id: currentOrg.id,
+      });
+      setMembers(data?.members || []);
     } catch (err) {
       // Fallback if user relation isn't set up — fetch without nested user
-      try {
-        const data2 = await gqlRequest(
-          `
-          query GetOrgMembersBasic($org_id: uuid!) {
-            organization_members(where: { org_id: { _eq: $org_id } }) {
-              id
-              role
-              user_id
-            }
-          }
-        `,
-          { org_id: currentOrg.id }
-        );
-        setMembers(data2?.organization_members || []);
-      } catch (err2) {
-        console.error("Fetch members error:", err2.message);
-      }
+      console.error("Fetch members error:", err.message);
     } finally {
       setLoadingMembers(false);
     }
@@ -98,67 +69,13 @@ export default function InviteMember({ currentOrg, userRole, onClose, onMembersU
     setSuccess(null);
 
     try {
-      // Step 1: Look up user by email in auth.users via admin query
-      let targetUserId = null;
-
-      try {
-        const userLookup = await gqlRequest(
-          `
-          query LookupUserByEmail($email: citext!) {
-            users(where: { email: { _eq: $email } }) {
-              id
-              email
-              displayName
-            }
-          }
-        `,
-          { email: inviteEmail.trim().toLowerCase() }
-        );
-
-        const foundUser = userLookup?.users?.[0];
-        if (foundUser) {
-          targetUserId = foundUser.id;
-        }
-      } catch (lookupErr) {
-        console.warn("User lookup note:", lookupErr.message);
-      }
-
-      if (!targetUserId) {
-        setError(
-          `No user found with email "${inviteEmail.trim()}". They must register first, then you can add them as a member.`
-        );
-        setInviting(false);
-        return;
-      }
-
-      // Step 2: Check if already a member
-      const alreadyMember = members.some((m) => m.user_id === targetUserId);
-      if (alreadyMember) {
-        setError(`${inviteEmail.trim()} is already a member of ${currentOrg.name}.`);
-        setInviting(false);
-        return;
-      }
-
-      // Step 3: Insert organization_members record
-      await gqlRequest(
-        `
-        mutation InviteMember($org_id: uuid!, $user_id: uuid!, $role: String!) {
-          insert_organization_members_one(object: {
-            org_id: $org_id,
-            user_id: $user_id,
-            role: $role
-          }) {
-            id
-            role
-          }
-        }
-      `,
-        {
-          org_id: currentOrg.id,
-          user_id: targetUserId,
-          role: inviteRole,
-        }
-      );
+      const result = await callFunction("/manage-organization-members", {
+        action: "invite",
+        org_id: currentOrg.id,
+        email: inviteEmail.trim(),
+        role: inviteRole,
+      });
+      setMembers(result?.members || []);
 
       setSuccess(
         `✓ ${inviteEmail.trim()} added as ${inviteRole} to ${currentOrg.name}`
@@ -181,8 +98,7 @@ export default function InviteMember({ currentOrg, userRole, onClose, onMembersU
     }
 
     // Prevent removing yourself
-    const savedUser = JSON.parse(localStorage.getItem("nhost_user") || "{}");
-    if (memberUserId === savedUser?.id) {
+    if (memberUserId === currentUser?.id) {
       setError("You cannot remove yourself from the organization.");
       return;
     }
@@ -191,16 +107,12 @@ export default function InviteMember({ currentOrg, userRole, onClose, onMembersU
     setError(null);
 
     try {
-      await gqlRequest(
-        `
-        mutation RemoveMember($id: uuid!) {
-          delete_organization_members_by_pk(id: $id) {
-            id
-          }
-        }
-      `,
-        { id: memberId }
-      );
+      const result = await callFunction("/manage-organization-members", {
+        action: "remove",
+        org_id: currentOrg.id,
+        member_id: memberId,
+      });
+      setMembers(result?.members || []);
 
       await fetchMembers();
       if (onMembersUpdated) onMembersUpdated();
@@ -219,17 +131,13 @@ export default function InviteMember({ currentOrg, userRole, onClose, onMembersU
 
     setError(null);
     try {
-      await gqlRequest(
-        `
-        mutation UpdateMemberRole($id: uuid!, $role: String!) {
-          update_organization_members_by_pk(
-            pk_columns: { id: $id },
-            _set: { role: $role }
-          ) { id role }
-        }
-      `,
-        { id: memberId, role: newRole }
-      );
+      const result = await callFunction("/manage-organization-members", {
+        action: "update_role",
+        org_id: currentOrg.id,
+        member_id: memberId,
+        role: newRole,
+      });
+      setMembers(result?.members || []);
 
       await fetchMembers();
       if (onMembersUpdated) onMembersUpdated();
@@ -346,8 +254,7 @@ export default function InviteMember({ currentOrg, userRole, onClose, onMembersU
               {members.map((m) => {
                 const displayEmail = m.user?.email || m.user_id;
                 const displayName = m.user?.displayName || null;
-                const savedUser = JSON.parse(localStorage.getItem("nhost_user") || "{}");
-                const isSelf = m.user_id === savedUser?.id;
+                const isSelf = m.user_id === currentUser?.id;
 
                 return (
                   <div
