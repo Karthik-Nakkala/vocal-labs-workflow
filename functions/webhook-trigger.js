@@ -149,10 +149,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "Failed to create workflow run record" });
     }
 
-    // ── Fire engine async (fire and forget) ──────────────────────────────────
-    runWorkflowEngine({ runId: run.id }).catch((err) => {
-      console.error("[webhook-trigger] Async engine error:", err.message);
-    });
+    // Keep the invocation alive so the engine is not terminated after this
+    // endpoint sends its response.
+    await runWorkflowEngine({ runId: run.id });
 
     return res.status(200).json({
       run_id: run.id,

@@ -111,10 +111,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "Failed to create workflow run record" });
     }
 
-    // ── Kick off async engine execution (fire and forget) ─────────────────────
-    runWorkflowEngine({ runId: run.id }).catch((err) => {
-      console.error("[trigger] Async engine error:", err.message);
-    });
+    // Keep the serverless invocation alive until the engine reaches a terminal
+    // state or an approval gate. Fire-and-forget work is terminated by Nhost
+    // once this handler sends its response.
+    await runWorkflowEngine({ runId: run.id });
 
     return res.status(200).json({
       run_id: run.id,

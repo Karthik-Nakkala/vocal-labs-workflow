@@ -141,10 +141,9 @@ export default async function handler(req, res) {
         const run = insertRunRes.body.data?.insert_workflow_runs_one;
         if (!run) throw new Error("Run creation returned null");
 
-        // Fire engine async
-        runWorkflowEngine({ runId: run.id }).catch((err) => {
-          console.error(`[scheduled-trigger] Engine error for workflow ${wf.id}:`, err.message);
-        });
+        // Await execution so the serverless runtime does not terminate it when
+        // the scheduled handler returns.
+        await runWorkflowEngine({ runId: run.id });
 
         results.push({
           workflow_id: wf.id,

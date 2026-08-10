@@ -156,10 +156,9 @@ export default async function handler(req, res) {
         });
       });
 
-      // ── Resume engine from the step AFTER the approval gate ───────────────
-      runWorkflowEngine({ runId, startFromStepOrder: currentStepOrder + 1 }).catch((err) => {
-        console.error("[approve] Async engine resume error:", err.message);
-      });
+      // Keep this invocation alive while resuming. Nhost terminates background
+      // promises when the HTTP handler returns.
+      await runWorkflowEngine({ runId, startFromStepOrder: currentStepOrder + 1 });
 
       return res.status(200).json({
         step_run_id,
