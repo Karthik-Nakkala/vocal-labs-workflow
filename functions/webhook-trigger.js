@@ -6,7 +6,7 @@ import { getAdminClient } from "./nhostAdmin.js";
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || null;
 
 /**
- * POST /webhookTrigger
+ * POST /webhook-trigger
  *
  * Body (JSON):
  *   { "workflow_id": "<uuid>", "input": { ...any payload... } }

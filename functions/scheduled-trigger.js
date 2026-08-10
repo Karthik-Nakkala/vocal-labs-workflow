@@ -2,7 +2,7 @@ import { runWorkflowEngine } from "./engine.js";
 import { getAdminClient } from "./nhostAdmin.js";
 
 /**
- * POST /scheduledTrigger
+ * POST /scheduled-trigger
  *
  * Designed to be called by Nhost's built-in cron scheduler.
  * Configure in Nhost Console → Scheduled Events → add a cron rule pointing
