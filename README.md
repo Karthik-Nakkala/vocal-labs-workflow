@@ -79,6 +79,7 @@ Create variables in **Nhost Console → Settings → Environment Variables** (or
 | `NHOST_GRAPHQL_URL` | Recommended | Hasura GraphQL endpoint used by server functions. |
 | `NHOST_ADMIN_SECRET` | Yes for server functions | Server-only Hasura admin access. Never expose it to the browser. |
 | `GEMINI_API_KEY` | Optional | Enables real Gemini calls for `llm_call` nodes. |
+| `GEMINI_MODEL` | Optional | Gemini text model. Defaults to `gemini-2.5-flash`. |
 | `NHOST_WEBHOOK_SECRET` | Recommended | Protects `/webhook-trigger`; send it as `x-webhook-secret`. `WEBHOOK_SECRET` is also accepted for backwards compatibility. |
 | `ALLOWED_ORIGINS` | Recommended | Comma-separated frontend origins allowed to call authenticated functions, for example `http://localhost:5173,https://your-app.vercel.app`. |
 
