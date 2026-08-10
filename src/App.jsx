@@ -54,30 +54,6 @@ function App() {
           membershipRole: m.role
         }));
 
-      if (orgList.length === 0) {
-        try {
-          const directOrgs = await gqlRequest(`
-            query DirectOrgs {
-              organizations {
-                id
-                name
-                calls_used
-                max_quota
-              }
-            }
-          `);
-          orgList = (directOrgs?.organizations || []).map(o => ({
-            id: o.id,
-            name: o.name,
-            calls_used: o.calls_used || 0,
-            max_quota: o.max_quota || 100,
-            membershipRole: "owner"
-          }));
-        } catch (e) {
-          console.warn("Direct orgs query note:", e.message);
-        }
-      }
-
       setOrganizations(orgList);
       if (orgList.length > 0) {
         setCurrentOrg((prev) => (prev && orgList.some(o => o.id === prev.id) ? prev : orgList[0]));
