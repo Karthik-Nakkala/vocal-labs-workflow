@@ -10,7 +10,9 @@ export default async function handler(req, res) {
 
   try {
     const requestBody = req.body || {};
-    const actionInput = requestBody.input || requestBody;
+    // Direct Function calls use { workflow_id, input }, while Hasura Actions
+    // use { input, session_variables }. Only unwrap the latter.
+    const actionInput = requestBody.session_variables ? requestBody.input || {} : requestBody;
     const userId =
       requestBody.session_variables?.["x-hasura-user-id"] ||
       (await getAuthenticatedUserId(req));

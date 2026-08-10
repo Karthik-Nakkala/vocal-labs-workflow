@@ -10,7 +10,9 @@ export default async function handler(req, res) {
 
   try {
     const requestBody = req.body || {};
-    const actionInput = requestBody.input || requestBody;
+    // Direct Function calls use the operation fields at the root. Hasura
+    // Actions are the only requests that wrap them in input.
+    const actionInput = requestBody.session_variables ? requestBody.input || {} : requestBody;
     const userId =
       requestBody.session_variables?.["x-hasura-user-id"] ||
       (await getAuthenticatedUserId(req));
