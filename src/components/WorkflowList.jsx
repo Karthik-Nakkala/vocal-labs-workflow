@@ -17,7 +17,7 @@ export default function WorkflowList({ currentOrg, onSelectWorkflow, onCreateNew
     setError(null);
 
     try {
-      const data = await gqlRequest(`
+      const buildWorkflowsQuery = (latestRunArguments) => `
         query GetWorkflows($org_id: uuid!) {
           workflows(where: { org_id: { _eq: $org_id } }) {
             id
@@ -34,7 +34,7 @@ export default function WorkflowList({ currentOrg, onSelectWorkflow, onCreateNew
               trigger_type
               config
             }
-            workflow_runs(order_by: { created_at: desc }, limit: 1) {
+            workflow_runs(${latestRunArguments}) {
               id
               status
               user_id
@@ -42,7 +42,27 @@ export default function WorkflowList({ currentOrg, onSelectWorkflow, onCreateNew
             }
           }
         }
-      `, { org_id: currentOrg.id });
+      `;
+
+      let data;
+      try {
+        data = await gqlRequest(
+          buildWorkflowsQuery("order_by: { created_at: desc }, limit: 1"),
+          { org_id: currentOrg.id }
+        );
+      } catch (latestRunError) {
+        // A recently-added column can be present in Postgres before every
+        // Hasura schema cache exposes it. Keep the workflow page available
+        // while that cache refreshes; all unrelated errors still surface.
+        if (!latestRunError.message?.includes("workflow_runs_order_by")) {
+          throw latestRunError;
+        }
+
+        data = await gqlRequest(
+          buildWorkflowsQuery("limit: 1"),
+          { org_id: currentOrg.id }
+        );
+      }
 
       setWorkflows(data?.workflows || []);
     } catch (err) {
