@@ -34,10 +34,11 @@ export default function WorkflowList({ currentOrg, onSelectWorkflow, onCreateNew
               trigger_type
               config
             }
-            workflow_runs(limit: 1) {
+            workflow_runs(order_by: { created_at: desc }, limit: 1) {
               id
               status
               user_id
+              created_at
             }
           }
         }
