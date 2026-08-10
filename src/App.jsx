@@ -10,10 +10,7 @@ import WorkflowRunner from "./components/WorkflowRunner";
 import InviteMember from "./components/InviteMember";
 
 function App() {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem("nhost_user");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState(() => nhost.getUserSession()?.user ?? null);
   const [organizations, setOrganizations] = useState([]);
   const [currentOrg, setCurrentOrg] = useState(null);
   const [view, setView] = useState("LIST"); // "LIST" | "BUILDER" | "RUNNER"
@@ -26,6 +23,10 @@ function App() {
       fetchUserOrganizations();
     }
   }, [user]);
+
+  useEffect(() => nhost.sessionStorage.onChange((session) => {
+    setUser(session?.user ?? null);
+  }), []);
 
   const fetchUserOrganizations = async () => {
     try {
@@ -138,13 +139,8 @@ function App() {
     }
   };
 
-  const handleLoginSuccess = (userData, token) => {
+  const handleLoginSuccess = (userData) => {
     setUser(userData);
-    localStorage.setItem("nhost_user", JSON.stringify(userData));
-    if (token) {
-      localStorage.setItem("nhost_token", token);
-    }
-    fetchUserOrganizations();
   };
 
   const handleLogout = async () => {
@@ -153,8 +149,7 @@ function App() {
     } catch (e) {
       // Ignore signout error
     }
-    localStorage.removeItem("nhost_user");
-    localStorage.removeItem("nhost_token");
+    nhost.clearSession();
     setUser(null);
     setOrganizations([]);
     setCurrentOrg(null);
