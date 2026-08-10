@@ -48,7 +48,7 @@ export default async function handler(req, res) {
                 id
                 org_id
                 organization {
-                  organization_members {
+                  organisation_members {
                     user_id
                     role
                   }
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     }
 
     // ── Layer 2: Role check — MUST be done in Action handler, not DB perms ────
-    const orgMembers = stepRun.workflow_run?.workflow?.organization?.organization_members || [];
+    const orgMembers = stepRun.workflow_run?.workflow?.organization?.organisation_members || [];
     const userMember = orgMembers.find((m) => m.user_id === userId);
 
     if (!userMember) {

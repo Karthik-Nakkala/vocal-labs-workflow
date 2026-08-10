@@ -39,7 +39,7 @@ export default async function handler(req, res) {
               id
               calls_used
               max_quota
-              organization_members(where: { user_id: { _eq: $user_id } }) {
+              organisation_members(where: { user_id: { _eq: $user_id } }) {
                 id
                 role
               }
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ message: "Forbidden: Workflow not found or no access" });
     }
 
-    const userMemberships = workflow.organization?.organization_members || [];
+    const userMemberships = workflow.organization?.organisation_members || [];
     if (userMemberships.length === 0) {
       return res.status(403).json({
         message: "Forbidden: You are not a member of this workflow's organization",
