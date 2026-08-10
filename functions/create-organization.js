@@ -1,4 +1,4 @@
-import { createClient } from "@nhost/nhost-js";
+import { getAdminClient } from "./nhostAdmin.js";
 
 export default async function handler(req, res) {
   // Allow CORS
@@ -21,12 +21,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "Organization name is required" });
     }
 
-    const nhostAdmin = createClient({
-      subdomain: process.env.NHOST_SUBDOMAIN || "mbknwfytawrylgsgbfxw",
-      region: process.env.NHOST_REGION || "ap-south-1",
-      adminSecret: process.env.NHOST_ADMIN_SECRET,
-      graphqlUrl: process.env.NHOST_GRAPHQL_URL || "https://mbknwfytawrylgsgbfxw.hasura.ap-south-1.nhost.run/v1/graphql"
-    });
+    const nhostAdmin = getAdminClient();
 
     // 1. Create Organization
     const createOrgRes = await nhostAdmin.graphql.request({
@@ -41,15 +36,15 @@ export default async function handler(req, res) {
       variables: { name }
     });
 
-    if (createOrgRes.error || !createOrgRes.data?.insert_organizations_one) {
-      console.error("Create Org Error:", createOrgRes.error);
+    if (!createOrgRes.body.data?.insert_organizations_one) {
+      console.error("Create Org Error: Nhost returned no organization");
       return res.status(400).json({ message: "Failed to create organization" });
     }
 
-    const org = createOrgRes.data.insert_organizations_one;
+    const org = createOrgRes.body.data.insert_organizations_one;
 
     // 2. Add creator as 'owner' in organization_members
-    const createMemberRes = await nhostAdmin.graphql.request({
+    await nhostAdmin.graphql.request({
       query: `
         mutation AddOwner($org_id: uuid!, $user_id: uuid!) {
           insert_organization_members_one(object: {
@@ -65,9 +60,6 @@ export default async function handler(req, res) {
       variables: { org_id: org.id, user_id: userId }
     });
 
-    if (createMemberRes.error) {
-      console.error("Add Owner Error:", createMemberRes.error);
-    }
 
     return res.status(200).json({
       id: org.id,
