@@ -11,6 +11,24 @@ const STEP_TYPES = [
   { type: "notify", label: "Notify Alert", desc: "Dispatches email or team alert notification" }
 ];
 
+const TRIGGER_TYPES = [
+  { type: "manual", label: "Manual", desc: "A member starts the workflow from the app." },
+  { type: "webhook", label: "Webhook", desc: "An external system starts the workflow through its webhook URL." },
+  { type: "scheduled", label: "Scheduled", desc: "Nhost's configured cron schedule starts the workflow." },
+  { type: "db_event", label: "Database event", desc: "A configured Hasura database event starts the workflow." },
+];
+
+function triggerDraft(trigger) {
+  return {
+    clientId: trigger.id || `new-${crypto.randomUUID()}`,
+    id: trigger.id || null,
+    trigger_type: trigger.trigger_type || "manual",
+    configText: JSON.stringify(trigger.config || {}, null, 2),
+    dirty: false,
+    deleted: false,
+  };
+}
+
 export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, onSaveSuccess }) {
   const isViewer = currentOrg?.membershipRole === "viewer";
   const isOwner = currentOrg?.membershipRole === "owner";
@@ -22,6 +40,9 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
       { name: "3. Check High Priority Rule", type: "conditional_branch", config: { condition: "priority === 'high'" } },
       { name: "4. Manager Approval Gate", type: "approval_gate", config: { note: "Manager approval required for refund action" } }
     ]
+  );
+  const [triggers, setTriggers] = useState(
+    (workflowToEdit?.workflow_triggers || []).map(triggerDraft)
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -45,6 +66,30 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
     setSteps(updated);
   };
 
+  const handleMoveStep = (index, direction) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= steps.length) return;
+    const reordered = [...steps];
+    [reordered[index], reordered[destination]] = [reordered[destination], reordered[index]];
+    setSteps(reordered);
+  };
+
+  const handleAddTrigger = () => {
+    setTriggers((current) => [...current, triggerDraft({ trigger_type: isOwner ? "webhook" : "manual", config: {} })]);
+  };
+
+  const updateTrigger = (clientId, updates) => {
+    setTriggers((current) => current.map((trigger) => (
+      trigger.clientId === clientId ? { ...trigger, ...updates, dirty: true } : trigger
+    )));
+  };
+
+  const removeTrigger = (clientId) => {
+    setTriggers((current) => current
+      .map((trigger) => (trigger.clientId === clientId ? { ...trigger, deleted: true } : trigger))
+      .filter((trigger) => trigger.id || !trigger.deleted));
+  };
+
   const handleSaveWorkflow = async () => {
     if (isViewer) {
       setError("Forbidden: Viewers cannot create or edit workflows.");
@@ -59,12 +104,39 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
     setError(null);
 
     try {
-      await callFunction("/save-workflow", {
+      const saveResult = await callFunction("/save-workflow", {
         org_id: currentOrg.id,
         workflow_id: workflowToEdit?.id || null,
         name,
         steps,
       });
+
+      const workflowId = saveResult?.id || workflowToEdit?.id;
+      if (!workflowId) throw new Error("Workflow saved but no workflow ID was returned.");
+
+      for (const trigger of triggers) {
+        if (trigger.deleted && trigger.id) {
+          await callFunction("/manage-workflow-trigger", {
+            action: "delete", workflow_id: workflowId, trigger_id: trigger.id,
+          });
+          continue;
+        }
+        if (trigger.deleted || (trigger.id && !trigger.dirty)) continue;
+
+        let config;
+        try {
+          config = JSON.parse(trigger.configText || "{}");
+        } catch {
+          throw new Error(`Trigger configuration for ${trigger.trigger_type} must be valid JSON.`);
+        }
+        await callFunction("/manage-workflow-trigger", {
+          action: trigger.id ? "update" : "create",
+          workflow_id: workflowId,
+          trigger_id: trigger.id || undefined,
+          trigger_type: trigger.trigger_type,
+          config,
+        });
+      }
 
       onSaveSuccess();
     } catch (err) {
@@ -142,9 +214,17 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
               </div>
 
               {!isViewer && (
-                <button className="btn-danger" onClick={() => handleRemoveStep(index)} style={{ padding: "0.25rem 0.6rem", fontSize: "0.75rem" }}>
-                  Remove Step
-                </button>
+                <div style={{ display: "flex", gap: "0.45rem" }}>
+                  <button className="btn-secondary" onClick={() => handleMoveStep(index, -1)} disabled={index === 0} style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}>
+                    ↑ Move up
+                  </button>
+                  <button className="btn-secondary" onClick={() => handleMoveStep(index, 1)} disabled={index === steps.length - 1} style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}>
+                    ↓ Move down
+                  </button>
+                  <button className="btn-danger" onClick={() => handleRemoveStep(index)} style={{ padding: "0.25rem 0.6rem", fontSize: "0.75rem" }}>
+                    Remove Step
+                  </button>
+                </div>
               )}
             </div>
 
@@ -182,6 +262,52 @@ export default function WorkflowBuilder({ currentOrg, workflowToEdit, onBack, on
           </div>
         </div>
       )}
+
+      <div className="glass-card" style={{ padding: "1.5rem", marginTop: "1.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start", marginBottom: "1rem" }}>
+          <div>
+            <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>Workflow Triggers</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Choose how this workflow can start. Save Workflow applies trigger changes too.</p>
+          </div>
+          {!isViewer && <button type="button" className="btn-secondary" onClick={handleAddTrigger}>+ Add trigger</button>}
+        </div>
+
+        {triggers.filter((trigger) => !trigger.deleted).length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>No configured triggers yet. Manual runs remain available to owners and editors.</p>
+        ) : triggers.filter((trigger) => !trigger.deleted).map((trigger) => {
+          const isWebhook = trigger.trigger_type === "webhook";
+          const lockedForEditor = isWebhook && !isOwner;
+          const triggerInfo = TRIGGER_TYPES.find((item) => item.type === trigger.trigger_type);
+          return (
+            <div key={trigger.clientId} style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: "8px", padding: "1rem", marginTop: "0.75rem" }}>
+              <div style={{ display: "flex", gap: "0.75rem", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                <select
+                  className="input-field"
+                  value={trigger.trigger_type}
+                  disabled={isViewer || lockedForEditor}
+                  onChange={(event) => updateTrigger(trigger.clientId, { trigger_type: event.target.value })}
+                  style={{ maxWidth: "240px" }}
+                >
+                  {TRIGGER_TYPES.filter((item) => isOwner || item.type !== "webhook").map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
+                </select>
+                {!isViewer && !lockedForEditor && <button type="button" className="btn-danger" onClick={() => removeTrigger(trigger.clientId)} style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}>Remove trigger</button>}
+              </div>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.6rem" }}>{triggerInfo?.desc}</p>
+              {lockedForEditor && <p style={{ color: "#fbbf24", fontSize: "0.8rem", marginBottom: "0.6rem" }}>Only the organization owner can change a webhook trigger.</p>}
+              <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>Trigger configuration (JSON)</label>
+              <textarea
+                className="input-field"
+                value={trigger.configText}
+                readOnly={isViewer || lockedForEditor}
+                onChange={(event) => updateTrigger(trigger.clientId, { configText: event.target.value })}
+                rows={4}
+                spellCheck="false"
+                style={{ resize: "vertical", fontFamily: "monospace" }}
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
