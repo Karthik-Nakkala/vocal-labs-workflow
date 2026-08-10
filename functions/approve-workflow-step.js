@@ -1,5 +1,5 @@
 import { runWorkflowEngine } from "./engine.js";
-import { getAdminClient } from "./nhostAdmin.js";
+import { getAdminClient, getAuthenticatedUserId } from "./nhostAdmin.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -9,14 +9,17 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
-    const { input, session_variables } = req.body || {};
-    const userId = session_variables?.["x-hasura-user-id"] || null;
+    const requestBody = req.body || {};
+    const actionInput = requestBody.input || requestBody;
+    const userId =
+      requestBody.session_variables?.["x-hasura-user-id"] ||
+      (await getAuthenticatedUserId(req));
 
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized: Missing user session" });
     }
 
-    const { step_run_id, approved } = input || {};
+    const { step_run_id, approved } = actionInput;
     if (!step_run_id) {
       return res.status(400).json({ message: "step_run_id is required" });
     }

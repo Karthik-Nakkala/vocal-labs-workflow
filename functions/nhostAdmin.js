@@ -15,6 +15,31 @@ const serverSessionStorage = {
   remove: () => {},
 };
 
+function createBaseServerClient() {
+  return createServerClient({
+    subdomain: NHOST_SUBDOMAIN,
+    region: NHOST_REGION,
+    graphqlUrl: NHOST_GRAPHQL_URL,
+    storage: serverSessionStorage,
+  });
+}
+
+/**
+ * Validates an incoming Nhost bearer token and returns its user id. This is
+ * needed for direct Function calls; Hasura Action calls provide the same id
+ * in session_variables instead.
+ */
+export async function getAuthenticatedUserId(req) {
+  const authorization = req.headers?.authorization || req.headers?.Authorization;
+  if (!authorization?.startsWith("Bearer ")) return null;
+
+  const response = await createBaseServerClient().auth.getUser({
+    headers: { Authorization: authorization },
+  });
+
+  return response.body?.id || null;
+}
+
 /**
  * Creates a server-only Hasura admin client. The secret remains in the
  * function environment and is applied by Nhost's supported v4 middleware.
