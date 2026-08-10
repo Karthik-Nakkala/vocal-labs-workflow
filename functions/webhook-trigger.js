@@ -3,7 +3,7 @@ import { getAdminClient } from "./nhostAdmin.js";
 
 // Optional webhook secret — set WEBHOOK_SECRET env var in Nhost console to require it.
 // If not set, the endpoint is open (acceptable for demo / assignment review).
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || null;
+const WEBHOOK_SECRET = process.env.NHOST_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || null;
 
 /**
  * POST /webhook-trigger
@@ -23,7 +23,6 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || null;
  * when a watched table row changes — the body will contain event.data.new etc.
  */
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-webhook-secret");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
 
