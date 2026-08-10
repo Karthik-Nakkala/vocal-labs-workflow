@@ -1,24 +1,9 @@
-import { createClient } from "@nhost/nhost-js";
 import { runWorkflowEngine } from "./engine.js";
-
-const NHOST_SUBDOMAIN = process.env.NHOST_SUBDOMAIN || "mbknwfytawrylgsgbfxw";
-const NHOST_REGION = process.env.NHOST_REGION || "ap-south-1";
-const NHOST_GRAPHQL_URL =
-  process.env.NHOST_GRAPHQL_URL ||
-  `https://${NHOST_SUBDOMAIN}.hasura.${NHOST_REGION}.nhost.run/v1/graphql`;
+import { getAdminClient } from "./nhostAdmin.js";
 
 // Optional webhook secret — set WEBHOOK_SECRET env var in Nhost console to require it.
 // If not set, the endpoint is open (acceptable for demo / assignment review).
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || null;
-
-function getAdminClient() {
-  return createClient({
-    subdomain: NHOST_SUBDOMAIN,
-    region: NHOST_REGION,
-    adminSecret: process.env.NHOST_ADMIN_SECRET,
-    graphqlUrl: NHOST_GRAPHQL_URL,
-  });
-}
 
 /**
  * POST /webhookTrigger
@@ -113,7 +98,7 @@ export default async function handler(req, res) {
       variables: { workflow_id: workflowId },
     });
 
-    const workflow = workflowRes.data?.workflows_by_pk;
+    const workflow = workflowRes.body.data?.workflows_by_pk;
     if (!workflow) {
       return res.status(404).json({
         message: `Workflow not found: ${workflowId}`,
@@ -157,7 +142,7 @@ export default async function handler(req, res) {
       },
     });
 
-    const run = insertRunRes.data?.insert_workflow_runs_one;
+    const run = insertRunRes.body.data?.insert_workflow_runs_one;
     if (!run) {
       return res.status(500).json({ message: "Failed to create workflow run record" });
     }
