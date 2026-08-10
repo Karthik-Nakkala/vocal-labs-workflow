@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { nhost, gqlRequest } from "./lib/nhost";
-import { devStore } from "./lib/devStore";
 import AuthScreen from "./components/AuthScreen";
 import Navbar from "./components/Navbar";
 import OrgManager from "./components/OrgManager";
@@ -79,57 +78,6 @@ function App() {
         }
       }
 
-      if (orgList.length === 0 && user) {
-        const cleanName = user.email ? user.email.split("@")[0] : "New Developer";
-        const capitalized = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-        const autoOrgName = `${capitalized}'s Organization`;
-
-        try {
-          const createOrgRes = await gqlRequest(`
-            mutation AutoCreateOrgForUser($name: String!) {
-              insert_organizations_one(object: { name: $name }) {
-                id
-                name
-                calls_used
-                max_quota
-              }
-            }
-          `, { name: autoOrgName });
-
-          const newOrg = createOrgRes?.insert_organizations_one;
-          if (newOrg) {
-            try {
-              await gqlRequest(`
-                mutation AutoLinkMember($org_id: uuid!, $user_id: uuid!) {
-                  insert_organization_members_one(object: {
-                    org_id: $org_id,
-                    user_id: $user_id,
-                    role: "owner"
-                  }) {
-                    id
-                  }
-                }
-              `, {
-                org_id: newOrg.id,
-                user_id: user.id && user.id.includes("-") ? user.id : "00000000-0000-0000-0000-000000000001"
-              });
-            } catch (mErr) {
-              console.warn("Member link note:", mErr.message);
-            }
-
-            orgList = [{
-              id: newOrg.id,
-              name: newOrg.name,
-              calls_used: newOrg.calls_used || 0,
-              max_quota: newOrg.max_quota || 100,
-              membershipRole: "owner"
-            }];
-          }
-        } catch (autoErr) {
-          console.error("Auto org creation error:", autoErr.message);
-        }
-      }
-
       setOrganizations(orgList);
       if (orgList.length > 0) {
         setCurrentOrg((prev) => (prev && orgList.some(o => o.id === prev.id) ? prev : orgList[0]));
@@ -189,6 +137,7 @@ function App() {
         <InviteMember
           currentOrg={currentOrg}
           userRole={currentOrg.membershipRole || "viewer"}
+          currentUser={user}
           onClose={() => setShowMembersModal(false)}
           onMembersUpdated={fetchUserOrganizations}
         />
