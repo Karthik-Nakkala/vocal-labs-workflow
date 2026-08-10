@@ -1,20 +1,5 @@
-import { createClient } from "@nhost/nhost-js";
 import { runWorkflowEngine } from "./engine.js";
-
-const NHOST_SUBDOMAIN = process.env.NHOST_SUBDOMAIN || "mbknwfytawrylgsgbfxw";
-const NHOST_REGION = process.env.NHOST_REGION || "ap-south-1";
-const NHOST_GRAPHQL_URL =
-  process.env.NHOST_GRAPHQL_URL ||
-  `https://${NHOST_SUBDOMAIN}.hasura.${NHOST_REGION}.nhost.run/v1/graphql`;
-
-function getAdminClient() {
-  return createClient({
-    subdomain: NHOST_SUBDOMAIN,
-    region: NHOST_REGION,
-    adminSecret: process.env.NHOST_ADMIN_SECRET,
-    graphqlUrl: NHOST_GRAPHQL_URL,
-  });
-}
+import { getAdminClient } from "./nhostAdmin.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -60,7 +45,7 @@ export default async function handler(req, res) {
       variables: { workflow_id, user_id: userId },
     });
 
-    const workflow = workflowCheckRes.data?.workflows_by_pk;
+    const workflow = workflowCheckRes.body.data?.workflows_by_pk;
     if (!workflow) {
       return res.status(403).json({ message: "Forbidden: Workflow not found or no access" });
     }
@@ -114,7 +99,7 @@ export default async function handler(req, res) {
       },
     });
 
-    const run = insertRunRes.data?.insert_workflow_runs_one;
+    const run = insertRunRes.body.data?.insert_workflow_runs_one;
     if (!run) {
       return res.status(500).json({ message: "Failed to create workflow run record" });
     }
