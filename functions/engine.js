@@ -1,22 +1,8 @@
-import { createClient } from "@nhost/nhost-js";
+import { getAdminClient } from "./nhostAdmin.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
-const NHOST_SUBDOMAIN = process.env.NHOST_SUBDOMAIN || "mbknwfytawrylgsgbfxw";
-const NHOST_REGION = process.env.NHOST_REGION || "ap-south-1";
-const NHOST_GRAPHQL_URL =
-  process.env.NHOST_GRAPHQL_URL ||
-  `https://${NHOST_SUBDOMAIN}.hasura.${NHOST_REGION}.nhost.run/v1/graphql`;
-
-function getAdminClient() {
-  return createClient({
-    subdomain: NHOST_SUBDOMAIN,
-    region: NHOST_REGION,
-    adminSecret: process.env.NHOST_ADMIN_SECRET,
-    graphqlUrl: NHOST_GRAPHQL_URL,
-  });
-}
 
 // ─── Real Gemini LLM Call (with 1 retry on 429 / 5xx) ───────────────────────
 async function callGemini(prompt, attempt = 1) {
@@ -156,7 +142,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
     variables: { runId },
   });
 
-  const run = runDataRes.data?.workflow_runs_by_pk;
+  const run = runDataRes.body.data?.workflow_runs_by_pk;
   if (!run) throw new Error(`Run not found: ${runId}`);
 
   const steps = run.workflow?.workflow_steps || [];
@@ -191,7 +177,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
         `,
         variables: { runId, stepId: step.id },
       });
-      const prevOutput = prevRes.data?.workflow_run_steps?.[0]?.output || {};
+      const prevOutput = prevRes.body.data?.workflow_run_steps?.[0]?.output || {};
       currentOutputs[step.name || step.id] = prevOutput;
       // Spread flat keys from previous step output into context for condition eval
       Object.assign(currentOutputs, prevOutput);
@@ -210,7 +196,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
       variables: { runId, stepId: step.id },
     });
 
-    let stepRun = existingRes.data?.workflow_run_steps?.[0];
+    let stepRun = existingRes.body.data?.workflow_run_steps?.[0];
     let stepRunId;
 
     if (!stepRun) {
@@ -231,7 +217,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
           input: { runInput: run.input, previousOutputs: currentOutputs },
         },
       });
-      stepRunId = createRes.data?.insert_workflow_run_steps_one?.id;
+      stepRunId = createRes.body.data?.insert_workflow_run_steps_one?.id;
     } else {
       stepRunId = stepRun.id;
       // If already completed (e.g. approval gate was approved externally), skip

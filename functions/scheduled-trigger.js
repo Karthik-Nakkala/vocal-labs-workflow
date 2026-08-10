@@ -1,20 +1,5 @@
-import { createClient } from "@nhost/nhost-js";
 import { runWorkflowEngine } from "./engine.js";
-
-const NHOST_SUBDOMAIN = process.env.NHOST_SUBDOMAIN || "mbknwfytawrylgsgbfxw";
-const NHOST_REGION = process.env.NHOST_REGION || "ap-south-1";
-const NHOST_GRAPHQL_URL =
-  process.env.NHOST_GRAPHQL_URL ||
-  `https://${NHOST_SUBDOMAIN}.hasura.${NHOST_REGION}.nhost.run/v1/graphql`;
-
-function getAdminClient() {
-  return createClient({
-    subdomain: NHOST_SUBDOMAIN,
-    region: NHOST_REGION,
-    adminSecret: process.env.NHOST_ADMIN_SECRET,
-    graphqlUrl: NHOST_GRAPHQL_URL,
-  });
-}
+import { getAdminClient } from "./nhostAdmin.js";
 
 /**
  * POST /scheduledTrigger
@@ -69,7 +54,7 @@ export default async function handler(req, res) {
         `,
         variables: { id: specificWorkflowId },
       });
-      const wf = wfRes.data?.workflows_by_pk;
+      const wf = wfRes.body.data?.workflows_by_pk;
       if (wf) workflowsToRun = [wf];
     } else {
       // Fetch all workflows that have a scheduled trigger configured
@@ -94,7 +79,7 @@ export default async function handler(req, res) {
           }
         `,
       });
-      workflowsToRun = (allRes.data?.workflow_triggers || [])
+      workflowsToRun = (allRes.body.data?.workflow_triggers || [])
         .map((t) => t.workflow)
         .filter(Boolean);
     }
@@ -151,7 +136,7 @@ export default async function handler(req, res) {
           },
         });
 
-        const run = insertRunRes.data?.insert_workflow_runs_one;
+        const run = insertRunRes.body.data?.insert_workflow_runs_one;
         if (!run) throw new Error("Run creation returned null");
 
         // Fire engine async
