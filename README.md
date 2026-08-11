@@ -80,6 +80,7 @@ Create variables in **Nhost Console → Settings → Environment Variables** (or
 | `NHOST_ADMIN_SECRET` | Yes for server functions | Server-only Hasura admin access. Never expose it to the browser. |
 | `GEMINI_API_KEY` | Optional | Enables real Gemini calls for `llm_call` nodes. |
 | `GEMINI_MODEL` | Optional | Gemini text model preference. Defaults to `gemini-3.6-flash`; the engine checks compatible fallback models exposed to the API key. |
+| `GEMINI_TIMEOUT_MS` | Optional | Maximum total wait for Gemini before a disclosed stub response is used. Defaults to `20000`. |
 | `NHOST_WEBHOOK_SECRET` | Recommended | Protects `/webhook-trigger`; send it as `x-webhook-secret`. `WEBHOOK_SECRET` is also accepted for backwards compatibility. |
 | `ALLOWED_ORIGINS` | Recommended | Comma-separated frontend origins allowed to call authenticated functions, for example `http://localhost:5173,https://your-app.vercel.app`. |
 
