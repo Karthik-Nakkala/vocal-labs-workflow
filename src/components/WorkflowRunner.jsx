@@ -157,6 +157,73 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
   const userRole = currentOrg?.membershipRole || "viewer";
   const canRun = ["owner", "editor"].includes(userRole);
 
+  // ── Auto-detect active / latest run (including Webhook-triggered runs) ──────
+  useEffect(() => {
+    if (runId) return;
+
+    const findLatestRun = async () => {
+      try {
+        const data = await gqlRequest(
+          `
+          query GetLatestRunForWorkflow($workflowId: uuid!) {
+            workflow_runs(
+              where: { workflow_id: { _eq: $workflowId } },
+              order_by: { created_at: desc },
+              limit: 1
+            ) {
+              id
+              status
+            }
+          }
+        `,
+          { workflowId: workflow.id }
+        );
+
+        const latest = data?.workflow_runs?.[0];
+        if (latest) {
+          setRunId(latest.id);
+          setSubscriptionState("connecting");
+        }
+      } catch (err) {
+        console.warn("[runner] Failed to auto-detect latest run:", err.message);
+      }
+    };
+
+    findLatestRun();
+
+    // Poll every 3 seconds when no run is attached to detect new incoming webhook runs
+    const interval = setInterval(async () => {
+      try {
+        const data = await gqlRequest(
+          `
+          query CheckPendingOrWaitingRun($workflowId: uuid!) {
+            workflow_runs(
+              where: {
+                workflow_id: { _eq: $workflowId },
+                status: { _in: ["pending", "running", "waiting_approval"] }
+              },
+              order_by: { created_at: desc },
+              limit: 1
+            ) {
+              id
+            }
+          }
+        `,
+          { workflowId: workflow.id }
+        );
+        const activeRun = data?.workflow_runs?.[0];
+        if (activeRun) {
+          setRunId(activeRun.id);
+          setSubscriptionState("connecting");
+        }
+      } catch (err) {
+        // Silent catch for background poll
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [workflow.id, runId]);
+
   // ── Real-Time GraphQL Subscription on step_runs ─────────────────────────────
   useEffect(() => {
     if (!runId) return;
