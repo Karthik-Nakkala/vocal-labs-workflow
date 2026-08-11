@@ -160,7 +160,6 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
   // ── Real-Time GraphQL Subscription on step_runs ─────────────────────────────
   useEffect(() => {
     if (!runId) return;
-    setSubscriptionState("connecting");
     fetchRunDetails();
 
     const subQuery = `
@@ -255,6 +254,14 @@ export default function WorkflowRunner({ currentOrg, workflow, onBack }) {
 
       if (result?.run_id) {
         setRunId(result.run_id);
+        setSubscriptionState("connecting");
+        // Do not await execution here: this keeps the browser free to render
+        // the live GraphQL subscription while the authenticated engine request
+        // writes each step state on the server.
+        void callFunction("/engine", { run_id: result.run_id }).catch((engineError) => {
+          console.error("[runner] Engine start error:", engineError);
+          setError(engineError.message || "Workflow engine failed to start.");
+        });
       } else {
         throw new Error("No run_id returned from trigger action");
       }
