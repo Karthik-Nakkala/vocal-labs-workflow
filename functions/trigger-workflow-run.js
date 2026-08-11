@@ -1,4 +1,3 @@
-import { runWorkflowEngine } from "./engine.js";
 import { getAdminClient, getAuthenticatedUserId } from "./nhostAdmin.js";
 
 export default async function handler(req, res) {
@@ -116,11 +115,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "Failed to create workflow run record" });
     }
 
-    // Return the run id before execution finishes so the browser can subscribe
-    // to each server-side step update as it happens.
-    void runWorkflowEngine({ runId: run.id }).catch((engineError) => {
-      console.error(`[trigger] Async engine error for run ${run.id}:`, engineError.message);
-    });
+    // The authenticated /engine request is started by the client after this
+    // response. Separating it from run creation lets the UI subscribe first,
+    // while the engine retains a complete serverless invocation lifetime.
 
     return res.status(202).json({
       run_id: run.id,

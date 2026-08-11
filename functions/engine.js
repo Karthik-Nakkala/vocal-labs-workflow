@@ -1,4 +1,4 @@
-import { getAdminClient } from "./nhostAdmin.js";
+import { getAdminClient, getAuthenticatedUserId } from "./nhostAdmin.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -10,12 +10,41 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // version via the GEMINI_MODEL env var if you need reproducibility — just
 // know pinned versions eventually get deprecated and you'll need to bump
 // them again later.
-const RAW_GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
-// Normalize in case someone sets GEMINI_MODEL="models/gemini-..." by mistake
-const GEMINI_MODEL = RAW_GEMINI_MODEL.replace(/^models\//, "");
 const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || "v1beta";
-const GEMINI_URL =
-  `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_API_BASE_URL = `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}`;
+const RAW_GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const GEMINI_MODEL = RAW_GEMINI_MODEL.replace(/^models\//, "");
+const GEMINI_MODEL_PREFERENCES = [
+  GEMINI_MODEL,
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+];
+let resolvedGeminiModel;
+
+async function getSupportedGeminiModel() {
+  if (resolvedGeminiModel) return resolvedGeminiModel;
+
+  const response = await fetch(`${GEMINI_API_BASE_URL}/models`, {
+    headers: { "x-goog-api-key": GEMINI_API_KEY },
+  });
+  if (!response.ok) {
+    throw new Error(`Gemini ListModels error ${response.status}: ${await response.text()}`);
+  }
+
+  const payload = await response.json();
+  const availableModels = new Set(
+    (payload.models || [])
+      .filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
+      .map((model) => model.name?.replace(/^models\//, ""))
+  );
+  resolvedGeminiModel = GEMINI_MODEL_PREFERENCES.find((model) => availableModels.has(model));
+  if (!resolvedGeminiModel) {
+    throw new Error("Gemini ListModels returned no supported generateContent model for this API key");
+  }
+  return resolvedGeminiModel;
+}
 
 // ─── Real Gemini LLM Call (with 1 retry on 429 / 5xx) ───────────────────────
 async function callGemini(prompt, attempt = 1) {
@@ -31,6 +60,9 @@ async function callGemini(prompt, attempt = 1) {
     };
   }
 
+  const model = await getSupportedGeminiModel();
+  const geminiUrl = `${GEMINI_API_BASE_URL}/models/${model}:generateContent`;
+
   const body = {
     contents: [
       {
@@ -39,11 +71,10 @@ async function callGemini(prompt, attempt = 1) {
     ],
     generationConfig: {
       maxOutputTokens: 512,
-      temperature: 0.4,
     },
   };
 
-  const res = await fetch(GEMINI_URL, {
+  const res = await fetch(geminiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -90,7 +121,7 @@ async function callGemini(prompt, attempt = 1) {
 
   return {
     text,
-    model: json?.modelVersion || GEMINI_MODEL,
+    model: json?.modelVersion || model,
     finishReason: json?.candidates?.[0]?.finishReason || "STOP",
     stubbed: false,
   };
@@ -489,4 +520,71 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
   }
 
   return { status: "completed", outputs: currentOutputs };
+}
+
+function setCorsHeaders(req, res) {
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://vocal-labs-workflow.vercel.app")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const origin = req.headers?.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+}
+
+/**
+ * Starts an already-authorized pending run in its own Function invocation.
+ * This endpoint deliberately accepts only a signed-in owner/editor belonging
+ * to the run's organization; it is not a public engine endpoint.
+ */
+export default async function handler(req, res) {
+  setCorsHeaders(req, res);
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
+
+  try {
+    const requestBody = req.body || {};
+    const actionInput = requestBody.session_variables ? requestBody.input || {} : requestBody;
+    const runId = actionInput.run_id;
+    if (!runId) return res.status(400).json({ message: "run_id is required" });
+
+    const userId = requestBody.session_variables?.["x-hasura-user-id"] || await getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized: Missing user session" });
+
+    const client = getAdminClient();
+    const accessResponse = await client.graphql.request({
+      query: `
+        query VerifyEngineAccess($run_id: uuid!, $user_id: uuid!) {
+          workflow_runs_by_pk(id: $run_id) {
+            id
+            status
+            workflow {
+              organization {
+                organisation_members(where: { user_id: { _eq: $user_id } }) { role }
+              }
+            }
+          }
+        }
+      `,
+      variables: { run_id: runId, user_id: userId },
+    });
+    const run = accessResponse.body.data?.workflow_runs_by_pk;
+    const role = run?.workflow?.organization?.organisation_members?.[0]?.role;
+    if (!run || !["owner", "editor"].includes(role)) {
+      return res.status(403).json({ message: "Forbidden: You cannot execute this workflow run" });
+    }
+    if (run.status !== "pending") {
+      return res.status(409).json({ message: `Run is already ${run.status}` });
+    }
+
+    const result = await runWorkflowEngine({ runId });
+    return res.status(200).json({ run_id: runId, ...result });
+  } catch (error) {
+    console.error("[engine] Endpoint error:", error.message);
+    return res.status(500).json({ message: error.message || "Workflow engine failed" });
+  }
 }
