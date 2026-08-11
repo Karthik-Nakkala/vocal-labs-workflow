@@ -21,46 +21,65 @@ const GEMINI_MODEL_PREFERENCES = [
   "gemini-2.5-flash",
   "gemini-2.0-flash",
 ];
+const GEMINI_TIMEOUT_MS = Math.max(1000, Number(process.env.GEMINI_TIMEOUT_MS || 20000));
 let resolvedGeminiModel;
 
-async function getSupportedGeminiModel() {
+function createStubResponse(prompt, fallbackReason) {
+  return {
+    text: `[STUB] AI analysis complete for: "${prompt.slice(0, 80)}". Sentiment: positive. Priority: high.`,
+    model: `${GEMINI_MODEL}-stub`,
+    stubbed: true,
+    fallbackReason,
+  };
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getSupportedGeminiModel(deadline) {
   if (resolvedGeminiModel) return resolvedGeminiModel;
 
-  const response = await fetch(`${GEMINI_API_BASE_URL}/models`, {
-    headers: { "x-goog-api-key": GEMINI_API_KEY },
-  });
-  if (!response.ok) {
-    throw new Error(`Gemini ListModels error ${response.status}: ${await response.text()}`);
-  }
+  try {
+    const response = await fetchWithTimeout(
+      `${GEMINI_API_BASE_URL}/models`,
+      { headers: { "x-goog-api-key": GEMINI_API_KEY } },
+      Math.min(3000, Math.max(1, deadline - Date.now()))
+    );
+    if (!response.ok) throw new Error(`ListModels returned ${response.status}`);
 
-  const payload = await response.json();
-  const availableModels = new Set(
-    (payload.models || [])
-      .filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
-      .map((model) => model.name?.replace(/^models\//, ""))
-  );
-  resolvedGeminiModel = GEMINI_MODEL_PREFERENCES.find((model) => availableModels.has(model));
-  if (!resolvedGeminiModel) {
-    throw new Error("Gemini ListModels returned no supported generateContent model for this API key");
+    const payload = await response.json();
+    const availableModels = new Set(
+      (payload.models || [])
+        .filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
+        .map((model) => model.name?.replace(/^models\//, ""))
+    );
+    resolvedGeminiModel = GEMINI_MODEL_PREFERENCES.find((model) => availableModels.has(model));
+    if (resolvedGeminiModel) return resolvedGeminiModel;
+    throw new Error("no supported generateContent model found");
+  } catch (error) {
+    console.warn("[engine] Gemini model lookup failed; trying configured model:", error.message);
+    return GEMINI_MODEL;
   }
-  return resolvedGeminiModel;
 }
 
 // ─── Real Gemini LLM Call (with 1 retry on 429 / 5xx) ───────────────────────
-async function callGemini(prompt, attempt = 1) {
+async function callGemini(prompt, attempt = 1, deadline = Date.now() + GEMINI_TIMEOUT_MS) {
   if (!GEMINI_API_KEY) {
     // Stubbed fallback — disclosed artificial delay so the assignment grader
     // can see the code path even without a key in dev
     console.warn("[engine] GEMINI_API_KEY not set — using stubbed LLM response");
     await new Promise((r) => setTimeout(r, 800));
-    return {
-      text: `[STUB] AI analysis complete for: "${prompt.slice(0, 80)}". Sentiment: positive. Priority: high.`,
-      model: `${GEMINI_MODEL}-stub`,
-      stubbed: true,
-    };
+    return createStubResponse(prompt, "GEMINI_API_KEY is not configured");
   }
 
-  const model = await getSupportedGeminiModel();
+  const model = await getSupportedGeminiModel(deadline);
   const geminiUrl = `${GEMINI_API_BASE_URL}/models/${model}:generateContent`;
 
   const body = {
@@ -74,20 +93,28 @@ async function callGemini(prompt, attempt = 1) {
     },
   };
 
-  const res = await fetch(geminiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": GEMINI_API_KEY,
-    },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw new Error("Gemini deadline exceeded");
+    res = await fetchWithTimeout(geminiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+      },
+      body: JSON.stringify(body),
+    }, remainingMs);
+  } catch (error) {
+    console.warn("[engine] Gemini timed out or could not be reached; using stub:", error.message);
+    return createStubResponse(prompt, `Gemini unavailable or exceeded ${GEMINI_TIMEOUT_MS}ms`);
+  }
 
-  if ((res.status === 429 || res.status >= 500) && attempt === 1) {
+  if ((res.status === 429 || res.status >= 500) && attempt === 1 && deadline - Date.now() > 2000) {
     // One retry after 2 seconds
     console.warn(`[engine] Gemini returned ${res.status}, retrying in 2s…`);
     await new Promise((r) => setTimeout(r, 2000));
-    return callGemini(prompt, 2);
+    return callGemini(prompt, 2, deadline);
   }
 
   if (!res.ok) {
@@ -342,6 +369,7 @@ export async function runWorkflowEngine({ runId, startFromStepOrder = 0 }) {
           rawResponse: llmResult.text.slice(0, 1000),
           model: llmResult.model,
           stubbed: llmResult.stubbed,
+          fallbackReason: llmResult.fallbackReason || null,
           promptUsed: promptTemplate,
         };
 
