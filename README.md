@@ -2,6 +2,27 @@
 
 A multi-tenant workflow builder for AI-powered automations. It uses React and Vite for the frontend, with Nhost Auth, Hasura GraphQL, PostgreSQL, and Nhost Functions for backend execution.
 
+---
+
+## 🎬 SEE IT IN ACTION — WATCH THE DEMO
+
+<div align="center">
+
+# 👇 CLICK BELOW TO WATCH THE FULL APPLICATION DEMO 👇
+
+<br/>
+
+[![▶ Watch the VocalLabs Workflow Builder Demo](https://img.shields.io/badge/▶%20WATCH%20DEMO-Click%20Here%20to%20See%20the%20App%20in%20Action-FF0000?style=for-the-badge&logo=google-drive&logoColor=white&labelColor=1a1a1a)](https://drive.google.com/file/d/1ufjUt_8_aebjS1ZRXkPCXBKyWWjWgjPZ/view?usp=sharing)
+
+<br/>
+
+> **📹 Full screen recording showing the complete workflow builder in action —**
+> **authentication, organization setup, workflow creation, step execution, approvals, and real-time updates.**
+
+</div>
+
+---
+
 Users work inside organizations with one of three roles:
 
 - **Owner** — manages members, workflows, steps, triggers, and runs.

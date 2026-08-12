@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VocalLabs AI Agent Workflow Builder - Architecture Write-Up</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: #1e293b;
+    max-width: 850px;
+    margin: 40px auto;
+    padding: 0 20px;
+    background-color: #ffffff;
+  }
+  h1 {
+    font-size: 26px;
+    color: #0f172a;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 10px;
+    margin-bottom: 24px;
+  }
+  h2 {
+    font-size: 20px;
+    color: #1e293b;
+    margin-top: 32px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 6px;
+  }
+  h3 {
+    font-size: 16px;
+    color: #334155;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  p {
+    margin-bottom: 14px;
+  }
+  ul {
+    margin-top: 4px;
+    margin-bottom: 16px;
+    padding-left: 24px;
+  }
+  li {
+    margin-bottom: 6px;
+  }
+  code {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+  }
+  pre {
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  hr {
+    border: 0;
+    height: 1px;
+    background: #e2e8f0;
+    margin: 32px 0;
+  }
+  .box {
+    background-color: #f8fafc;
+    border-left: 4px solid #2563eb;
+    padding: 14px 18px;
+    margin: 18px 0;
+    border-radius: 0 6px 6px 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>VocalLabs AI Agent Workflow Builder: Architecture Write-Up</h1>
+
+<h2>1. Schema Reasoning &amp; Structural Design</h2>
+<p>The database schema is structured for a multi-tenant, enterprise-grade workflow orchestration platform.</p>
+
+<ul>
+  <li><strong>Tenant Isolation &amp; Quota Management (<code>organizations</code> &amp; <code>organization_members</code>)</strong>:
+    <ul>
+      <li><code>organizations</code> serves as the tenant root entity. It holds stateful rate-limiting and usage counters (<code>calls_used</code> and <code>max_quota</code>).</li>
+      <li><code>organization_members</code> establishes the RBAC mapping between authenticated users (<code>user_id</code>) and organizations (<code>org_id</code>). Every membership assigns a role: <code>owner</code>, <code>editor</code>, or <code>viewer</code>. This explicit entity prevents orphaned resource ownership and supports multi-organization user profiles.</li>
+    </ul>
+  </li>
+  <li><strong>Declarative Workflow Graph Definitions (<code>workflows</code>, <code>workflow_steps</code>, <code>workflow_triggers</code>)</strong>:
+    <ul>
+      <li><code>workflows</code> anchors the workflow meta-data to its parent organization (<code>org_id</code>).</li>
+      <li><code>workflow_steps</code> stores the deterministic execution graph as an ordered sequence of nodes (<code>step_order</code>), node classification (<code>type</code>: <code>llm_call</code>, <code>http_request</code>, <code>conditional_branch</code>, <code>approval_gate</code>, <code>db_write</code>, <code>notify</code>), and schema-less configuration payload (<code>config</code> JSONB).</li>
+      <li><code>workflow_triggers</code> encapsulates trigger definitions (<code>trigger_type</code>: <code>manual</code>, <code>webhook</code>, <code>scheduled</code>, <code>db_event</code>) decoupled from execution logic.</li>
+    </ul>
+  </li>
+  <li><strong>Execution State &amp; Audit Traceability (<code>workflow_runs</code> &amp; <code>workflow_run_steps</code>)</strong>:
+    <ul>
+      <li><code>workflow_runs</code> records each execution instance, tracking overall status (<code>pending</code>, <code>running</code>, <code>waiting_approval</code>, <code>completed</code>, <code>failed</code>), initial input, and final output payloads.</li>
+      <li><code>workflow_run_steps</code> (mapped to <code>step_runs</code> in Postgres) provides granular per-node execution audit trails. It records node-level status, input/output transitions, retry attempts (<code>attempt_count</code>), and approval audit metadata (<code>approved_by</code>, <code>approved_at</code>).</li>
+    </ul>
+  </li>
+  <li><strong>Aggregation &amp; Analytics View (<code>org_usage_analytics</code>)</strong>:
+    <ul>
+      <li>A PostgreSQL view aggregating workflow counts, run totals, quota remaining, and usage percentages per organization to power administrative dashboards efficiently without heavy client-side computation.</li>
+    </ul>
+  </li>
+</ul>
+
+<hr>
+
+<h2>2. Dual-Layer Permission Enforcement Model</h2>
+<p>Security is enforced using two complementary, defense-in-depth permission layers operating at distinct architectural boundaries:</p>
+
+<pre>
+[ Client Request ]
+       │
+       ▼
+┌─────────────────────────────────────────────────────────┐
+│ Layer 1: Hasura GraphQL Gateway &amp; PostgreSQL RLS        │
+│ ➔ Data Scoping &amp; Multi-Tenant Isolation                 │
+│ ➔ Dynamic filters based on X-Hasura-User-Id             │
+└──────────────────────────┬──────────────────────────────┘
+                           │ Passed / Routed to Action
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│ Layer 2: Serverless Engine &amp; Action Handlers            │
+│ ➔ Operation &amp; Side-Effect Authorization                 │
+│ ➔ Role enforcement (Owner/Editor vs. Viewer) in code    │
+└─────────────────────────────────────────────────────────┘
+</pre>
+
+<h3>Layer 1: Hasura Declarative Permissions &amp; Postgres RLS (Data Scoping)</h3>
+<ul>
+  <li><strong>Role &amp; Tenant Boundary</strong>: Applied automatically by Hasura GraphQL Engine and PostgreSQL Row-Level Security (RLS) on all incoming client queries/mutations.</li>
+  <li><strong>Enforcement Mechanism</strong>: Hasura dynamically injects SQL <code>WHERE</code> clauses matching <code>X-Hasura-User-Id</code> against <code>organization_members</code>. A user in Organization B cannot read, update, or delete workflows belonging to Organization A—even if they possess valid record UUIDs.</li>
+  <li><strong>Granular Controls</strong>: Select, Insert, Update, and Delete rules are configured per table. Viewers are restricted to <code>select</code> operations, while <code>owner</code> and <code>editor</code> roles gain write capabilities.</li>
+</ul>
+
+<h3>Layer 2: Serverless Function &amp; Action-Level Authorization (Operation &amp; Side-Effect Protection)</h3>
+<ul>
+  <li><strong>Execution Guarding</strong>: Serverless functions (<code>trigger-workflow-run</code>, <code>approve-workflow-step</code>, <code>save-workflow</code>, <code>manage-workflow-trigger</code>) execute operations using Hasura Admin privileges (<code>nhostAdmin</code> client) to perform atomic multi-table updates.</li>
+  <li><strong>Programmatic Authorization</strong>: Before executing side-effects (calling Gemini LLM APIs, dispatching webhooks, or mutating run states), the code queries the full organizational membership chain to verify the caller's explicit role.</li>
+  <li><strong>Role Enforcement</strong>:
+    <ul>
+      <li>Workflow creation and trigger management require <code>owner</code> or <code>editor</code> roles.</li>
+      <li>Approval gates (<code>approve-workflow-step</code>) check that the approver is an <code>owner</code> or <code>editor</code> within the specific organization owning the workflow. <code>viewer</code> roles or external non-members receive HTTP <code>403 Forbidden</code> responses.</li>
+    </ul>
+  </li>
+</ul>
+
+<hr>
+
+<h2>3. Approval-Gate Pause / Resume Implementation</h2>
+<p>The Human-in-the-Loop (HITL) pattern is implemented via an asynchronous state-machine inside the execution engine and approval Action.</p>
+
+<pre>
+[ Step 1: LLM Call ] ──> [ Step 2: Approval Gate ] ──( Pause Run &amp; Step )──> [ UI: waiting_approval ]
+                                                                                   │
+                                                                       User Calls approveWorkflowStep
+                                                                                   │
+[ Step 3: HTTP Request ] &lt;──( Engine Resumes from step_order + 1 ) &lt;─── [ If Approved: True ]
+</pre>
+
+<h3>1. Pause Mechanism (<code>functions/engine.js</code>)</h3>
+<ol>
+  <li>The workflow engine (<code>runWorkflowEngine</code>) iterates through workflow steps sorted by <code>step_order</code>.</li>
+  <li>When evaluating a node of <code>type === "approval_gate"</code>:
+    <ul>
+      <li>Sets the step status to <code>"waiting_approval"</code>.</li>
+      <li>Populates step output metadata including <code>requiredRole: ["owner", "editor"]</code> and <code>stepRunId</code>.</li>
+      <li>Updates <code>workflow_run_steps</code> status to <code>"waiting_approval"</code>.</li>
+      <li>Mutates top-level <code>workflow_runs</code> status to <code>"waiting_approval"</code>.</li>
+      <li>Sets <code>pauseWorkflow = true</code> and returns <code>{ status: "waiting_approval", pausedAtStepId }</code>, halting engine execution without error.</li>
+    </ul>
+  </li>
+  <li>GraphQL subscriptions (<code>OnRunProgress</code>) stream the <code>"waiting_approval"</code> status update to the frontend interface in real-time.</li>
+</ol>
+
+<h3>2. Resume / Rejection Mechanism (<code>functions/approve-workflow-step.js</code>)</h3>
+<ol>
+  <li>An authorized user triggers the <code>approveWorkflowStep</code> GraphQL Action providing <code>{ step_run_id, approved: true | false }</code>.</li>
+  <li>The serverless handler extracts <code>userId</code> from session variables, fetches the <code>workflow_run_steps</code> record, and traces the relation chain up to <code>organization_members</code>.</li>
+  <li><strong>Guards</strong>:
+    <ul>
+      <li>Verifies that the step type is <code>approval_gate</code>.</li>
+      <li>Verifies that the run status is currently <code>"waiting_approval"</code>.</li>
+      <li>Enforces Layer 2 authorization: Caller MUST have <code>owner</code> or <code>editor</code> role in the workflow's organization.</li>
+    </ul>
+  </li>
+  <li><strong>On Approval (<code>approved: true</code>)</strong>:
+    <ul>
+      <li>Updates <code>workflow_run_steps</code> status to <code>"completed"</code> and writes audit records (<code>approved_by</code>, <code>approved_at</code>, output metadata).</li>
+      <li>Invokes <code>runWorkflowEngine({ runId, startFromStepOrder: currentStepOrder + 1 })</code>.</li>
+      <li>The engine resumes execution starting from the next step order (<code>step_order &gt; currentStepOrder</code>), seamlessly executing subsequent nodes (<code>http_request</code>, <code>db_write</code>, etc.).</li>
+    </ul>
+  </li>
+  <li><strong>On Rejection (<code>approved: false</code>)</strong>:
+    <ul>
+      <li>Updates <code>workflow_run_steps</code> and parent <code>workflow_runs</code> status to <code>"failed"</code>.</li>
+      <li>Writes rejection audit metadata (<code>rejectedByUserId</code>, <code>rejectedAt</code>), permanently stopping execution.</li>
+    </ul>
+  </li>
+</ol>
+
+</body>
+</html>

@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VocalLabs — Hasura Metadata: Schema, Relationships &amp; Permissions</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: #1e293b;
+    background: #fff;
+    max-width: 900px;
+    margin: 36px auto;
+    padding: 0 24px 60px;
+  }
+  h1 { font-size: 24px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 6px; }
+  .subtitle { color: #64748b; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 17px; color: #0f172a; margin: 32px 0 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px; }
+  h3 { font-size: 14px; color: #1e3a8a; margin: 18px 0 8px; font-weight: 600; }
+  h4 { font-size: 13px; color: #334155; margin: 14px 0 6px; font-weight: 600; }
+  p { margin-bottom: 10px; color: #334155; }
+  code {
+    background: #f1f5f9; color: #0f172a; padding: 1px 5px;
+    border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px;
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; padding: 14px 16px;
+    border-radius: 7px; overflow-x: auto;
+    font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; line-height: 1.5;
+    margin: 10px 0 16px;
+  }
+  hr { border: 0; height: 1px; background: #e2e8f0; margin: 28px 0; }
+
+  /* Schema tables */
+  .schema-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  .schema-card {
+    border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px;
+    background: #f8fafc;
+  }
+  .schema-card.public { border-left: 4px solid #2563eb; }
+  .schema-card.auth   { border-left: 4px solid #7c3aed; }
+  .schema-card.storage{ border-left: 4px solid #059669; }
+  .schema-card .card-title {
+    font-weight: 700; font-size: 13px; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .badge.public  { background: #dbeafe; color: #1d4ed8; }
+  .badge.auth    { background: #ede9fe; color: #6d28d9; }
+  .badge.storage { background: #d1fae5; color: #065f46; }
+  .col-list { list-style: none; margin: 0; padding: 0; }
+  .col-list li { font-size: 12px; color: #475569; padding: 1px 0; }
+  .col-list li span.pk  { color: #f59e0b; font-weight: 700; font-size: 10px; margin-right: 4px; }
+  .col-list li span.fk  { color: #6366f1; font-weight: 700; font-size: 10px; margin-right: 4px; }
+  .col-list li span.audit { color: #10b981; font-weight: 700; font-size: 10px; margin-right: 4px; }
+
+  /* Relationships */
+  .rel-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 12.5px; }
+  .rel-table th {
+    background: #f1f5f9; text-align: left; padding: 7px 10px;
+    font-weight: 600; color: #374151; border-bottom: 1px solid #e2e8f0;
+  }
+  .rel-table td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  .rel-table tr:last-child td { border-bottom: none; }
+  .rel-type { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 99px; }
+  .rel-obj  { background: #dbeafe; color: #1e40af; }
+  .rel-arr  { background: #fce7f3; color: #9d174d; }
+
+  /* Permissions */
+  .perm-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+  .perm-table th {
+    background: #0f172a; color: #f8fafc; text-align: center; padding: 8px 10px;
+    font-weight: 600; font-size: 11px;
+  }
+  .perm-table th:first-child { text-align: left; }
+  .perm-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .perm-table tr:last-child td { border-bottom: none; }
+  .perm-table td:first-child { font-weight: 600; font-size: 12.5px; color: #1e293b; }
+  .op { text-align: center; }
+  .tick  { color: #16a34a; font-weight: 700; font-size: 15px; }
+  .cross { color: #dc2626; font-weight: 700; font-size: 15px; }
+  .cond  { color: #d97706; font-weight: 700; font-size: 13px; }
+  .legend { font-size: 11px; color: #64748b; margin-top: 6px; }
+  .legend span { margin-right: 14px; }
+
+  /* Permission detail blocks */
+  .perm-detail { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; padding: 14px 16px; margin-bottom: 14px; }
+  .perm-detail .pd-title { font-weight: 700; font-size: 13px; color: #0f172a; margin-bottom: 8px; }
+  .perm-detail .pd-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .perm-tag {
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 99px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .perm-tag.select { background: #d1fae5; color: #065f46; }
+  .perm-tag.insert { background: #dbeafe; color: #1d4ed8; }
+  .perm-tag.update { background: #fef9c3; color: #854d0e; }
+  .perm-tag.delete { background: #fee2e2; color: #991b1b; }
+  .filter-box {
+    background: #0f172a; color: #93c5fd; padding: 10px 14px;
+    border-radius: 5px; font-family: monospace; font-size: 11.5px;
+    line-height: 1.5; margin: 6px 0 0; overflow-x: auto;
+  }
+  .note { font-size: 11.5px; color: #64748b; font-style: italic; margin-top: 4px; }
+
+  /* Actions */
+  .action-card {
+    border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px;
+    margin-bottom: 12px; background: #fafafa;
+    border-left: 4px solid #0ea5e9;
+  }
+  .action-card .ac-title { font-weight: 700; font-size: 13.5px; color: #0f172a; margin-bottom: 4px; }
+  .action-card .ac-meta { font-size: 12px; color: #475569; }
+
+  /* Layer callout */
+  .layer-box {
+    border-radius: 8px; padding: 14px 18px; margin: 14px 0;
+  }
+  .layer1 { background: #eff6ff; border-left: 5px solid #2563eb; }
+  .layer2 { background: #f0fdf4; border-left: 5px solid #16a34a; }
+  .layer-box .lbl { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+
+  @media print {
+    body { margin: 20px; }
+    .schema-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>VocalLabs — Hasura Metadata Reference</h1>
+<p class="subtitle">Schema · Relationships · Permission Layers · Actions &nbsp;|&nbsp; Source: <code>hasura-metadata.json</code> (resource_version 128)</p>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>1. Schema Overview</h2>
+<p>The Hasura source exposes three PostgreSQL schemas. The <strong>public</strong> schema owns all application data. The <strong>auth</strong> and <strong>storage</strong> schemas are managed by Nhost/Hasura Auth and Nhost Storage respectively and are tracked for relationship traversal only.</p>
+
+<div class="schema-grid">
+
+  <!-- organizations -->
+  <div class="schema-card public">
+    <div class="card-title">organizations <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li>name TEXT</li>
+      <li>calls_used INT</li>
+      <li>max_quota INT</li>
+      <li>created_at TIMESTAMPTZ</li>
+    </ul>
+  </div>
+
+  <!-- organization_members -->
+  <div class="schema-card public">
+    <div class="card-title">organization_members <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li><span class="fk">FK</span>org_id → organizations</li>
+      <li>user_id UUID (→ auth.users)</li>
+      <li>role TEXT (owner | editor | viewer)</li>
+      <li>created_at TIMESTAMPTZ</li>
+    </ul>
+  </div>
+
+  <!-- workflows -->
+  <div class="schema-card public">
+    <div class="card-title">workflows <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li><span class="fk">FK</span>org_id → organizations</li>
+      <li>name TEXT</li>
+      <li>created_at TIMESTAMPTZ</li>
+    </ul>
+  </div>
+
+  <!-- workflow_steps -->
+  <div class="schema-card public">
+    <div class="card-title">workflow_steps <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li><span class="fk">FK</span>workflow_id → workflows</li>
+      <li>name TEXT</li>
+      <li>type TEXT (llm_call | http_request | conditional_branch | approval_gate | db_write | notify)</li>
+      <li>config JSONB</li>
+      <li>step_order INT</li>
+    </ul>
+  </div>
+
+  <!-- workflow_triggers -->
+  <div class="schema-card public">
+    <div class="card-title">workflow_triggers <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li><span class="fk">FK</span>workflow_id → workflows</li>
+      <li>trigger_type TEXT (manual | webhook | scheduled | db_event)</li>
+      <li>config JSONB</li>
+      <li>created_at TIMESTAMPTZ</li>
+    </ul>
+  </div>
+
+  <!-- workflow_runs -->
+  <div class="schema-card public">
+    <div class="card-title">workflow_runs <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li><span class="fk">FK</span>workflow_id → workflows</li>
+      <li>user_id UUID</li>
+      <li>status TEXT (pending | running | waiting_approval | completed | failed)</li>
+      <li>input / output JSONB</li>
+      <li>created_at TIMESTAMPTZ</li>
+    </ul>
+  </div>
+
+  <!-- workflow_run_steps -->
+  <div class="schema-card public">
+    <div class="card-title">workflow_run_steps <span class="badge public">public</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li><span class="fk">FK</span>run_id → workflow_runs</li>
+      <li><span class="fk">FK</span>step_id → workflow_steps</li>
+      <li>status TEXT</li>
+      <li>input / output JSONB</li>
+      <li>attempt_count INT</li>
+      <li><span class="audit">AUDIT</span>approved_by UUID</li>
+      <li><span class="audit">AUDIT</span>approved_at TIMESTAMPTZ</li>
+    </ul>
+  </div>
+
+  <!-- auth.users (summary) -->
+  <div class="schema-card auth">
+    <div class="card-title">users <span class="badge auth">auth</span></div>
+    <ul class="col-list">
+      <li><span class="pk">PK</span>id UUID</li>
+      <li>email TEXT</li>
+      <li>display_name TEXT</li>
+      <li>default_role TEXT</li>
+      <li>+ userProviders, roles, refreshTokens, securityKeys, oauth2AuthRequests, oauth2RefreshTokens (array)</li>
+    </ul>
+  </div>
+
+  <!-- storage -->
+  <div class="schema-card storage">
+    <div class="card-title">buckets / files <span class="badge storage">storage</span></div>
+    <ul class="col-list">
+      <li>Nhost-managed object storage</li>
+      <li>files → buckets (FK: bucket_id)</li>
+      <li>No application-level permissions configured; access controlled by Nhost Storage rules</li>
+    </ul>
+  </div>
+
+  <!-- org_usage_analytics -->
+  <div class="schema-card public">
+    <div class="card-title">org_usage_analytics <span class="badge public">view</span></div>
+    <ul class="col-list">
+      <li>org_id, org_name, calls_used, max_quota</li>
+      <li>quota_remaining = max_quota − calls_used</li>
+      <li>usage_percentage (rounded, %)</li>
+      <li>total_workflows, total_runs</li>
+      <li>Read-only aggregation; not tracked in metadata (admin-only access)</li>
+    </ul>
+  </div>
+
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>2. Hasura Relationship Graph</h2>
+<p>All <strong>public</strong> schema relationships are declared via manual configuration (column mapping) in the metadata, because the FK constraints live at the application level and Hasura cannot auto-detect them. The <strong>auth</strong> schema uses native FK-based relationships.</p>
+
+<h3>public schema — Object Relationships (Many-to-One)</h3>
+<table class="rel-table">
+  <thead>
+    <tr><th>Table</th><th>Relationship Name</th><th>Type</th><th>Join (local → remote)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>organization_members</td><td><code>organization</code></td><td><span class="rel-type rel-obj">object</span></td><td>org_id → organizations.id</td></tr>
+    <tr><td>workflows</td><td><code>organization</code></td><td><span class="rel-type rel-obj">object</span></td><td>org_id → organizations.id</td></tr>
+    <tr><td>workflow_steps</td><td><code>workflow</code></td><td><span class="rel-type rel-obj">object</span></td><td>workflow_id → workflows.id</td></tr>
+    <tr><td>workflow_triggers</td><td><code>workflow</code></td><td><span class="rel-type rel-obj">object</span></td><td>workflow_id → workflows.id</td></tr>
+    <tr><td>workflow_runs</td><td><code>workflow</code></td><td><span class="rel-type rel-obj">object</span></td><td>workflow_id → workflows.id</td></tr>
+    <tr><td>workflow_run_steps</td><td><code>workflow_run</code></td><td><span class="rel-type rel-obj">object</span></td><td>run_id → workflow_runs.id</td></tr>
+    <tr><td>workflow_run_steps</td><td><code>workflow_step</code></td><td><span class="rel-type rel-obj">object</span></td><td>step_id → workflow_steps.id</td></tr>
+  </tbody>
+</table>
+
+<h3>public schema — Array Relationships (One-to-Many)</h3>
+<table class="rel-table">
+  <thead>
+    <tr><th>Table</th><th>Relationship Name</th><th>Type</th><th>Join (remote column → local)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>organizations</td><td><code>organisation_members</code></td><td><span class="rel-type rel-arr">array</span></td><td>organization_members.org_id → id</td></tr>
+    <tr><td>organizations</td><td><code>workflows</code></td><td><span class="rel-type rel-arr">array</span></td><td>workflows.org_id → id</td></tr>
+    <tr><td>workflows</td><td><code>workflow_steps</code></td><td><span class="rel-type rel-arr">array</span></td><td>workflow_steps.workflow_id → id</td></tr>
+    <tr><td>workflows</td><td><code>workflow_triggers</code></td><td><span class="rel-type rel-arr">array</span></td><td>workflow_triggers.workflow_id → id</td></tr>
+    <tr><td>workflows</td><td><code>workflow_runs</code></td><td><span class="rel-type rel-arr">array</span></td><td>workflow_runs.workflow_id → id</td></tr>
+    <tr><td>workflow_runs</td><td><code>workflow_run_steps</code></td><td><span class="rel-type rel-arr">array</span></td><td>workflow_run_steps.run_id → id</td></tr>
+  </tbody>
+</table>
+
+<p>These traversals power the deep-nested <code>filter</code> expressions used in both permission layers — e.g. <code>workflow → organization → organisation_members → user_id</code>.</p>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>3. Two Permission Layers</h2>
+
+<div class="layer-box layer1">
+  <div class="lbl">⬤ Layer 1 — Hasura Declarative Permissions (GraphQL Gateway)</div>
+  All read/write access to the GraphQL API passes through row-level permission rules declared in the metadata. These rules are evaluated by Hasura before any SQL reaches Postgres, using the <code>X-Hasura-User-Id</code> session variable injected from the JWT. This layer enforces multi-tenant data isolation and basic role scope (all/member/owner+editor).
+</div>
+
+<div class="layer-box layer2">
+  <div class="lbl">⬤ Layer 2 — Serverless Action Handlers (Side-Effect Authorization)</div>
+  Three GraphQL Actions (<code>triggerWorkflowRun</code>, <code>approveWorkflowStep</code>, <code>createOrganization</code>) route to serverless functions. These functions use the Hasura Admin client to perform multi-table writes and enforce role requirements that go beyond data scoping — quota checks, owner-only operations, and approval-gate authorization — returning HTTP <code>403</code> when callers lack required roles.
+</div>
+
+<h3>3.1 Layer 1: Per-Table Hasura Permission Matrix</h3>
+<p class="legend"><span><span class="tick">✔</span> Allowed (any member)</span><span><span class="cond">⊙</span> Conditional (owner/editor only)</span><span><span class="cross">✗</span> Denied</span></p>
+
+<table class="perm-table">
+  <thead>
+    <tr>
+      <th>Table</th>
+      <th>SELECT</th>
+      <th>INSERT</th>
+      <th>UPDATE</th>
+      <th>DELETE</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>organizations</td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org</small></td>
+      <td class="op"><span class="tick">✔</span><br><small>any user</small></td>
+      <td class="op"><span class="cross">✗</span></td>
+      <td class="op"><span class="cross">✗</span></td>
+    </tr>
+    <tr>
+      <td>organization_members</td>
+      <td class="op"><span class="tick">✔</span><br><small>open (all rows)</small></td>
+      <td class="op"><span class="tick">✔</span><br><small>any user</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner only</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner only</small></td>
+    </tr>
+    <tr>
+      <td>workflows</td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner only</small></td>
+    </tr>
+    <tr>
+      <td>workflow_steps</td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+    </tr>
+    <tr>
+      <td>workflow_triggers</td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+      <td class="op"><span class="cond">⊙</span><br><small>owner/editor</small></td>
+    </tr>
+    <tr>
+      <td>workflow_runs</td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org</small></td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org<br>(status/user_id auto-set)</small></td>
+      <td class="op"><span class="cross">✗</span></td>
+      <td class="op"><span class="cross">✗</span></td>
+    </tr>
+    <tr>
+      <td>workflow_run_steps</td>
+      <td class="op"><span class="tick">✔</span><br><small>member of org</small></td>
+      <td class="op"><span class="cross">✗</span><br><small>engine-only (admin)</small></td>
+      <td class="op"><span class="cross">✗</span><br><small>engine-only (admin)</small></td>
+      <td class="op"><span class="cross">✗</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3.2 Layer 1: Key Filter Expressions (from metadata)</h3>
+
+<div class="perm-detail">
+  <div class="pd-title">organizations — SELECT filter</div>
+  <p class="note">User sees only organizations they are a member of.</p>
+  <div class="filter-box">{ "organisation_members": { "user_id": { "_eq": "X-Hasura-User-Id" } } }</div>
+</div>
+
+<div class="perm-detail">
+  <div class="pd-title">workflows — INSERT check (owner/editor gate)</div>
+  <p class="note">Only owner or editor may create a workflow inside an organization.</p>
+  <div class="filter-box">{
+  "organization": {
+    "organisation_members": {
+      "_and": [
+        { "user_id": { "_eq": "X-Hasura-User-Id" } },
+        { "role": { "_in": ["owner", "editor"] } }
+      ]
+    }
+  }
+}</div>
+</div>
+
+<div class="perm-detail">
+  <div class="pd-title">workflows — DELETE filter (owner-only)</div>
+  <p class="note">Only the org owner may delete a workflow (stronger than INSERT/UPDATE which allow editors too).</p>
+  <div class="filter-box">{
+  "organization": {
+    "organisation_members": {
+      "_and": [
+        { "user_id": { "_eq": "X-Hasura-User-Id" } },
+        { "role": { "_eq": "owner" } }
+      ]
+    }
+  }
+}</div>
+</div>
+
+<div class="perm-detail">
+  <div class="pd-title">workflow_run_steps — SELECT filter (4-hop traversal)</div>
+  <p class="note">The deepest filter chain in the schema — traverses four relationships to scope step data to org membership.</p>
+  <div class="filter-box">{
+  "workflow_run": {
+    "workflow": {
+      "organization": {
+        "organisation_members": {
+          "user_id": { "_eq": "X-Hasura-User-Id" }
+        }
+      }
+    }
+  }
+}</div>
+</div>
+
+<div class="perm-detail">
+  <div class="pd-title">workflow_runs — INSERT preset (auto-set fields)</div>
+  <p class="note">Hasura auto-injects status and user_id on insert, preventing client-side manipulation.</p>
+  <div class="filter-box">columns allowed: [ "workflow_id", "input" ]
+preset:  { "status": "pending", "user_id": "X-Hasura-User-Id" }</div>
+</div>
+
+<div class="perm-detail">
+  <div class="pd-title">organization_members — UPDATE/DELETE filter (owner gate)</div>
+  <p class="note">Managing members (adding/removing) requires the acting user to be an owner of that same organization.</p>
+  <div class="filter-box">{
+  "organization": {
+    "organisation_members": {
+      "role": { "_eq": "owner" },
+      "user_id": { "_eq": "X-Hasura-User-Id" }
+    }
+  }
+}</div>
+</div>
+
+<hr>
+
+<h3>3.3 Layer 2: GraphQL Actions &amp; Serverless Authorization</h3>
+<p>Three mutations bypass the declarative permission layer and are handled entirely in serverless functions, which use the Hasura Admin secret to read and write data free of row-level restrictions, while enforcing richer business rules in code.</p>
+
+<div class="action-card">
+  <div class="ac-title">createOrganization</div>
+  <div class="ac-meta">Handler: <code>/create-organization</code> &nbsp;|&nbsp; Type: mutation · synchronous &nbsp;|&nbsp; Args: <code>name: String!</code></div>
+  <p style="margin-top:8px;font-size:12.5px;">Creates the organization row and inserts the caller as <code>owner</code> in <code>organization_members</code> in a single atomic operation. The admin client is required because Layer 1 does not allow users to self-assign the <code>owner</code> role.</p>
+</div>
+
+<div class="action-card">
+  <div class="ac-title">triggerWorkflowRun</div>
+  <div class="ac-meta">Handler: <code>/trigger-workflow-run</code> &nbsp;|&nbsp; Type: mutation · synchronous &nbsp;|&nbsp; Args: <code>workflow_id: uuid!</code>, <code>input: jsonb</code></div>
+  <p style="margin-top:8px;font-size:12.5px;">Validates membership (owner or editor), checks <code>calls_used &lt; max_quota</code>, creates a <code>pending</code> run record, and then calls the <code>/engine</code> function to start step execution. Returns <code>run_id</code> immediately so the UI can open a subscription before execution finishes.</p>
+</div>
+
+<div class="action-card">
+  <div class="ac-title">approveWorkflowStep</div>
+  <div class="ac-meta">Handler: <code>/approve-workflow-step</code> &nbsp;|&nbsp; Type: mutation · synchronous &nbsp;|&nbsp; Args: <code>step_run_id: uuid!</code>, <code>approved: Boolean!</code></div>
+  <p style="margin-top:8px;font-size:12.5px;">Traverses the full relationship chain <code>workflow_run_steps → workflow_runs → workflows → organizations → organisation_members</code> to resolve membership. Guards: step type must be <code>approval_gate</code>, run status must be <code>waiting_approval</code>, caller must be <code>owner</code> or <code>editor</code>. On approval, writes audit fields (<code>approved_by</code>, <code>approved_at</code>) and resumes the engine from <code>step_order + 1</code>. On rejection, marks both step and run as <code>failed</code>.</p>
+</div>
+
+<p><strong>Why Layer 2 is necessary for these three operations:</strong> Hasura row permissions operate on individual table rows. They cannot enforce cross-table business rules like quota checks, cannot atomically create two related rows with role enforcement, and cannot resume a stateful execution engine. These side-effects require admin-level multi-table writes with application logic, which is exactly what serverless Action handlers provide.</p>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h2>4. Auth Schema (Nhost-managed)</h2>
+<p>The <code>auth</code> schema is tracked in the metadata for relationship traversal from application tables but does not carry application-level Hasura permissions. Nhost Auth manages its own session enforcement via JWTs.</p>
+
+<table class="rel-table">
+  <thead>
+    <tr><th>Table</th><th>Key Relationships</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>auth.users</td><td>→ user_providers (array), user_roles (array), refresh_tokens (array), oauth2_auth_requests (array), oauth2_refresh_tokens (array), security_keys (array)</td></tr>
+    <tr><td>auth.oauth2_auth_requests</td><td>→ client (object via client_id), user (object via user_id), authorizationCodes (array), refreshTokens (array)</td></tr>
+    <tr><td>auth.oauth2_clients</td><td>→ createdByUser (object), authRequests (array), oauth2RefreshTokens (array)</td></tr>
+    <tr><td>auth.oauth2_refresh_tokens</td><td>→ authRequest (object), client (object), user (object)</td></tr>
+    <tr><td>auth.refresh_tokens</td><td>→ user (object via user_id), type (object via refresh_token_types)</td></tr>
+    <tr><td>auth.user_providers</td><td>→ provider (object), user (object)</td></tr>
+    <tr><td>auth.user_roles</td><td>→ roleByRole (object), user (object)</td></tr>
+    <tr><td>auth.user_security_keys</td><td>→ user (object)</td></tr>
+  </tbody>
+</table>
+
+<p style="font-size:12.5px;color:#475569;">The <code>auth.users.id</code> field is the canonical identity anchor. It is referenced by <code>organization_members.user_id</code>, <code>workflow_runs.user_id</code>, <code>workflow_run_steps.approved_by</code>, and matched against the <code>X-Hasura-User-Id</code> session variable in every permission filter above.</p>
+
+</body>
+</html>
